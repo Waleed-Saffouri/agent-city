@@ -5,20 +5,23 @@ Three layers, cheapest first:
   2. Learning (free): titles similar to jobs you skipped lose points; similar to approved gain.
   3. AI re-rank (one cheap call a day): the top matches are re-checked against your profile.
 """
+import html
 import json
 import re
 import time
+import urllib.parse
 from collections import Counter
 from datetime import datetime
 
 import db
 from agents import guard
 from agents.base import Agent
-from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, INTERNSHIP_PENALTY, JOB_SOURCES,
+from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, INTERNSHIP_TERMS, JOB_SOURCES, SPRING_BONUS,
                     MAX_AGE_DAYS, OFF_TOPIC, PREFERRED_LOCATIONS, SKIP_TITLE, TITLE_KEYWORDS)
 
 PROFILE = ("Waleed: Computational & Data Sciences B.S. (GMU, May 2027) with a finance minor. "
            "Skills: Python, SQL, pandas, statistics, Power BI, AWS basics, an algorithmic trading bot. "
+           "Two goals: (1) a Spring 2027 internship, (2) a full-time job starting after May 2027. "
            "Wants: data analyst / data science / analytics / finance-analytics roles, private sector, "
            "hybrid, NYC/VA-DC/Texas/NC/remote/London. Avoids: government, defense, cleared roles, "
            "lab or clinical research, hardware, roles needing a master's or PhD.")
@@ -48,11 +51,72 @@ def from_greenhouse(slug, data):
             ts = datetime.fromisoformat(posted).timestamp() if posted else 0
         except ValueError:
             ts = 0
-        out.append({"id": f"gh-{slug}-{j['id']}", "company_name": (j.get("company_name") or slug).strip(),
+        content = re.sub(r"<[^>]+>", " ", html.unescape(j.get("content") or ""))
+        out.append({"salary": salary_from(content),
+                    "id": f"gh-{slug}-{j['id']}", "company_name": (j.get("company_name") or slug).strip(),
                     "title": j.get("title", ""), "locations": [(j.get("location") or {}).get("name", "")],
                     "url": j.get("absolute_url", ""), "date_posted": ts, "active": True,
                     "is_visible": True, "category": "", "degrees": []})
     return out
+
+
+INTERN_WORDS = re.compile(r"(?i)\bintern(ship)?\b|\bco-?op\b|\bextern\b")
+SPRING_WORDS = re.compile(r"(?i)spring|winter|january|jan\b|off-?cycle|part-?time")
+
+
+def track_of(job, source):
+    """'internship' for a Spring 2027 internship, 'fulltime' for a job after May, None to skip."""
+    title = job.get("title", "")
+    terms = [t for t in (job.get("terms") or []) if t and t != "N/A"]
+    is_intern = source == "internships" or bool(INTERN_WORDS.search(title))
+    if not is_intern:
+        return "fulltime"
+    if terms:
+        return "internship" if any(t in INTERNSHIP_TERMS for t in terms) else None
+    return "internship" if SPRING_WORDS.search(title) else None   # untagged: needs a spring hint
+
+
+SALARY = re.compile(
+    r"\$\s?(\d{2,3}(?:,\d{3})+|\d{2,3}(?:\.\d+)?\s?[kK]|\d{2,3}(?:\.\d{1,2})?)"
+    r"\s*(?:-|–|—|to)\s*\$?\s?(\d{2,3}(?:,\d{3})+|\d{2,3}(?:\.\d+)?\s?[kK]|\d{2,3}(?:\.\d{1,2})?)"
+    r"(\s*(?:/|per|an)\s*(?:hour|hr|year|yr|annum))?")
+
+
+def salary_from(text):
+    """Pull a pay range like '$85,000 - $105,000' or '$25 - $30/hour' from posting text."""
+    for m in SALARY.finditer(text or ""):
+        lo, hi, unit = m.group(1), m.group(2), (m.group(3) or "").lower()
+        def val(x):
+            x = x.replace(",", "").strip()
+            return float(x[:-1]) * 1000 if x[-1] in "kK" else float(x)
+        a, b = val(lo), val(hi)
+        if b < a:
+            continue
+        if "h" in unit or b < 200:            # hourly
+            if 10 <= a <= 150:
+                return f"${a:g}–${b:g}/hr"
+        elif 30_000 <= a <= 600_000:
+            return f"${a/1000:.0f}K–${b/1000:.0f}K"
+    return ""
+
+
+def salary_from_page(page):
+    """Salary from a job page: the structured 'baseSalary' data many sites include, else the text."""
+    for block in re.findall(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', page or "", re.S):
+        try:
+            data = json.loads(block)
+        except ValueError:
+            continue
+        for item in data if isinstance(data, list) else [data]:
+            base = (item or {}).get("baseSalary") if isinstance(item, dict) else None
+            v = (base or {}).get("value") if isinstance(base, dict) else None
+            if isinstance(v, dict) and v.get("minValue"):
+                lo, hi = float(v["minValue"]), float(v.get("maxValue") or v["minValue"])
+                if (v.get("unitText") or "").upper() == "HOUR" or hi < 200:
+                    return f"${lo:g}–${hi:g}/hr"
+                return f"${lo/1000:.0f}K–${hi/1000:.0f}K"
+    text = re.sub(r"<[^>]+>", " ", html.unescape(page or ""))
+    return salary_from(text)
 
 
 def words(title):
@@ -124,9 +188,11 @@ def score_job(job, source="", liked=None, disliked=None):
     else:
         score += 4
 
-    if source == "internships" and not re.search(r"spring|winter|co-?op|fall", title):
-        score -= INTERNSHIP_PENALTY
-        reasons.append("summer internship (you graduate in May)")
+    if track_of(job, source) == "internship":
+        score += SPRING_BONUS
+        reasons.append("Spring 2027 internship (one of your goals)")
+    if job.get("salary"):
+        reasons.append(f"pays {job['salary']}")
 
     if liked or disliked:
         w = words(title)
@@ -144,6 +210,26 @@ class JobScout(Agent):
     tier = "worker"
     role = "Finds new jobs every morning and queues the best ones for your approval."
 
+    def add_salaries(self, rows, limit=25):
+        """Open the best postings that don't list pay yet and look for a salary on the page."""
+        found, out = 0, []
+        need = {r[0] for r in sorted(rows, key=lambda r: -r[8]) if not r[11]}
+        need = set(list(need)[:limit])
+        for r in rows:
+            host = urllib.parse.urlparse(r[5]).hostname or "" if r[5] else ""
+            if r[0] in need and host and self.may("network", host):  # only sites on the allowed list
+                try:
+                    pay = salary_from_page(self.fetch(r[5], timeout=15, raw=True))
+                except Exception:
+                    pay = ""   # site not on the list, blocked, or slow: just skip it
+                if pay:
+                    found += 1
+                    r = r[:9] + (json.dumps(json.loads(r[9]) + [f"pays {pay}"]),) + r[10:11] + (pay,)
+            out.append(r)
+        if need:
+            self.log(f"Found pay for {found} of the {len(need)} top postings that didn't list it.")
+        return out
+
     def ai_rerank(self, rows):
         """One AI call for the whole batch (not one per job) to keep usage tiny."""
         top = []
@@ -159,7 +245,8 @@ class JobScout(Agent):
                 break
         if not top:
             return rows
-        listing = "\n".join(f"{i}. {guard.clean(r[2], 60)} | {guard.clean(r[3], 120)} | {guard.clean(r[4], 60)}"
+        listing = "\n".join(f"{i}. [{'Spring internship' if r[10] == 'internship' else 'full-time'}] "
+                            f"{guard.clean(r[2], 60)} | {guard.clean(r[3], 120)} | {guard.clean(r[4], 60)}"
                             for i, r in enumerate(top))
         answer = self.think(
             f"{PROFILE}\n\nRate how well each job below fits him from -20 (bad fit) to +20 (great fit). "
@@ -178,7 +265,7 @@ class JobScout(Agent):
             if isinstance(a, list) and len(a) == 2:
                 delta = max(-20, min(20, int(a[0])))
                 reasons = json.loads(r[9]) + [f"AI: {a[1]}"]
-                out[r[0]] = r[:8] + (max(0, min(100, r[8] + delta)), json.dumps(reasons))
+                out[r[0]] = r[:8] + (max(0, min(100, r[8] + delta)), json.dumps(reasons)) + r[10:]
         self.log(f"AI re-checked the top {len(top)} matches.")
         return list(out.values())
 
@@ -197,12 +284,14 @@ class JobScout(Agent):
         failed = []
         for slug in GREENHOUSE_COMPANIES:
             try:
-                jobs = from_greenhouse(slug, self.fetch(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+                jobs = from_greenhouse(slug, self.fetch(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
                                                         timeout=20))
                 feeds.append(("company_boards", jobs))
             except Exception:
                 failed.append(slug)
         ok = len(GREENHOUSE_COMPANIES) - len(failed)
+        if not feeds:  # nothing at all came in: that's a failure, not "no jobs today"
+            raise RuntimeError("couldn't read any job source (internet down or sources moved)")
         self.log(f"Read {len(feeds) - ok} job lists and {ok}/{len(GREENHOUSE_COMPANIES)} company boards."
                  + (f" Couldn't reach: {', '.join(failed[:5])}{'…' if len(failed) > 5 else ''}." if failed else ""),
                  "warn" if failed else "info")
@@ -217,8 +306,10 @@ class JobScout(Agent):
                 if same in seen_titles:  # the same job listed in two places
                     continue
                 seen_titles.add(same)
-                src = "internships" if (source == "company_boards" and
-                                        "intern" in j.get("title", "").lower()) else source
+                src = source
+                track = track_of(j, src)
+                if track is None:
+                    continue   # summer/fall internship: not one of your goals
                 checked += 1
                 jid = str(j.get("id"))
                 if jid in known:
@@ -231,13 +322,18 @@ class JobScout(Agent):
                     continue
                 new.append((jid, time.time(), j["company_name"], j["title"],
                             "; ".join(j.get("locations", []))[:200], j.get("url", ""),
-                            src, j.get("date_posted", 0), score, json.dumps(reasons)))
+                            src, j.get("date_posted", 0), score, json.dumps(reasons), track,
+                            j.get("salary", "")))
         new = self.ai_rerank(new)
+        new = self.add_salaries(new)
         for row in new:
             db.execute("""INSERT OR IGNORE INTO jobs(id, ts, company, title, locations, url, source,
-                          posted, score, reasons) VALUES (?,?,?,?,?,?,?,?,?,?)""", row)
+                          posted, score, reasons, track, salary) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", row)
         top = sorted(new, key=lambda r: -r[8])[:3]
         summary = ", ".join(f"{r[2]} ({r[8]})" for r in top) or "none"
-        self.log(f"Checked {checked} fresh listings, queued {len(new)} good matches.")
-        self.send("manager", f"Found {len(new)} new matches waiting for approval. Top: {summary}.")
+        n_int = sum(1 for r in new if r[10] == "internship")
+        self.log(f"Checked {checked} fresh listings, queued {len(new)} good matches "
+                 f"({n_int} Spring internships, {len(new) - n_int} full-time jobs).")
+        self.send("manager", f"Found {n_int} Spring internships and {len(new) - n_int} full-time jobs for you. "
+                             f"Top: {summary}.")
         return {"checked": checked, "queued": len(new)}

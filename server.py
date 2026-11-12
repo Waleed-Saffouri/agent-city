@@ -37,7 +37,8 @@ def state():
         agents.append({"name": name, "role": cls.role, "tier": cls.tier,
                        "status": s.get("status", "idle"),
                        "last_result": json.loads(s["last_result"]) if s.get("last_result") else None})
-    jobs = db.rows("SELECT * FROM jobs WHERE status='pending' ORDER BY score DESC LIMIT 25")
+    jobs = (db.rows("SELECT * FROM jobs WHERE status='pending' AND track='internship' ORDER BY score DESC LIMIT 25")
+            + db.rows("SELECT * FROM jobs WHERE status='pending' AND track='fulltime' ORDER BY score DESC LIMIT 25"))
     for j in jobs:
         j["reasons"] = json.loads(j["reasons"] or "[]")
     brief = db.rows("SELECT * FROM briefs ORDER BY ts DESC LIMIT 1")

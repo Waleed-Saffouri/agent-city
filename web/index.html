@@ -90,6 +90,11 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rende
 .why{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .why span{font-size:12px;background:var(--paper-2);color:var(--ink-2);padding:2px 7px;border-radius:5px}
 .why span.ai{background:#e6eefc;color:#2c56b8}
+.pay{font-size:13px;font-weight:600;color:var(--ok);margin-top:3px}
+.pay.none{color:var(--ink-3);font-weight:400}
+.tabs{display:flex;gap:4px;background:var(--paper-2);padding:4px;border-radius:10px;margin-bottom:12px}
+.tabs button{flex:1;border:0;background:transparent;border-radius:7px;padding:8px 6px;font-size:13px;color:var(--ink-2)}
+.tabs button[aria-selected=true]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(20,30,50,.12)}
 .acts{display:flex;flex-direction:column;gap:6px}
 .acts button{border:1px solid var(--rule);background:#fff;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600}
 .acts .yes{background:var(--scout);border-color:var(--scout);color:#fff}
@@ -156,7 +161,7 @@ const ago = ts => { const s = Math.max(0, Math.round(Date.now()/1000 - ts));
   return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s/60)}m ago` : s < 86400 ? `${Math.round(s/3600)}h ago` : `${Math.round(s/86400)}d ago`; };
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-let S = null, openId = null, lastAnswer = "";
+let S = null, openId = null, lastAnswer = "", scoutTab = "internship";
 
 /* ---------- the world ---------- */
 const AGENTS = {
@@ -370,30 +375,23 @@ const VIEWS = {
         <h3>The team</h3><div class="roster">${roster}</div>` };
   },
   scout(){
-    const jobs = S.jobs || [];
+    const all = S.jobs || [];
+    const tabs = [["internship", "Spring 2027 internships"], ["fulltime", "Jobs after May"]];
+    const jobs = all.filter(j => (j.track || "fulltime") === scoutTab);
     const list = jobs.length ? jobs.map(j => `<div class="item">
         <div class="fit"><strong>${j.score}</strong><small>fit</small></div>
         <div class="meta"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a>
           <div class="sub">${esc(j.company)} · ${esc((j.locations || "").split(";").slice(0,2).join(";"))}</div>
-          <div class="why">${(j.reasons || []).map(r => `<span class="${r.startsWith("AI:") ? "ai" : ""}">${esc(r.replace(/^AI: /, ""))}</span>`).join("")}</div></div>
+          <div class="pay ${j.salary ? "" : "none"}">${j.salary ? esc(j.salary) : "Pay not listed"}</div>
+          <div class="why">${(j.reasons || []).filter(r => !r.startsWith("pays ")).map(r => `<span class="${r.startsWith("AI:") ? "ai" : ""}">${esc(r.replace(/^AI: /, ""))}</span>`).join("")}</div></div>
         <div class="acts"><button class="yes" onclick="act('${j.id}','approve')">Approve</button><button onclick="act('${j.id}','skip')">Skip</button></div>
-      </div>`).join("") : `<p class="empty">Nothing waiting. The Scout checks again every morning, or press Run now.</p>`;
+      </div>`).join("") : `<p class="empty">Nothing waiting here. The Scout checks again every morning, or press Run now.</p>`;
     const r = (S.agents.find(a => a.name === "scout") || {}).last_result || {};
-    return { title:"Job Scout", role:"Reads job lists and 27 company boards each morning, filters them for you, and learns from your choices.", color:"var(--scout)", tag:"SCT",
+    const count = t => all.filter(j => (j.track || "fulltime") === t).length;
+    return { title:"Job Scout", role:"Finds Spring 2027 internships and full-time jobs for after May, filters them for you, and learns from your choices.", color:"var(--scout)", tag:"SCT",
       status: statusLine("scout"),
-      body: `${r.checked ? `<p class="empty" style="padding-top:0">Last run checked ${r.checked.toLocaleString()} postings and kept ${r.queued}. Approve the ones worth applying to.</p>` : ""}${list}` };
-  },
-  sentinel(){
-    const F = S.findings || [], r = (S.agents.find(a => a.name === "sentinel") || {}).last_result || {};
-    const tools = (r.tools || []);
-    const list = F.length ? F.map(f => `<div class="item"><div class="sev ${f.severity}">${f.severity === "high" ? "High" : f.severity === "medium" ? "Medium" : "Low"}</div>
-        <div class="meta"><b>${esc(f.check_name)}</b><div class="sub">${esc(f.target)} — ${esc(f.location)}</div>
-          <div class="sub">${esc(f.detail)}</div><div class="fix">${/^See https?:\/\//.test(f.fix) ? `<a href="${esc(f.fix.slice(4))}" target="_blank" rel="noopener">read the guide for this issue</a>` : esc(f.fix)}</div></div>
-        <div class="acts"><button onclick="dismiss('${f.id}')" title="Hide this finding">Dismiss</button></div></div>`).join("")
-      : `<p class="empty">${r.tools ? "No open issues. Your projects are clean." : "Sentinel hasn't scanned yet. Press Run now."}</p>`;
-    return { title:"Sentinel", role:"Blocks leaked keys before they're committed and scans your projects every morning.", color:"var(--sentinel)", tag:"SEC",
-      status: statusLine("sentinel"),
-      body: `${tools.length ? `<div class="tools">${tools.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}${list}` };
+      body: `<div class="tabs" role="tablist">${tabs.map(([k, label]) => `<button role="tab" aria-selected="${scoutTab === k}" onclick="scoutTab='${k}';render(true)">${label} <b>${count(k)}</b></button>`).join("")}</div>
+        ${r.checked ? `<p class="empty" style="padding-top:0">Last run checked ${r.checked.toLocaleString()} postings. Approve the ones worth applying to, and the Writer drafts a cover letter.</p>` : ""}${list}` };
   },
   writer(){
     const D = S.drafts || [], W = S.approved_waiting || [];

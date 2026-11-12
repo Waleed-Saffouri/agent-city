@@ -58,6 +58,15 @@ RISKY_CODE = {  # fallback only, when Bandit isn't installed
 HOOK_MARK = "# agent-city sentinel hook"
 
 
+def tool(name):
+    """Find a scanner on PATH or next to this Python (inside .venv/bin when started by start.sh)."""
+    found = shutil.which(name)
+    if found:
+        return found
+    local = Path(sys.executable).parent / name
+    return str(local) if local.exists() else None
+
+
 def files_in(folder):
     for p in Path(folder).rglob("*"):
         if any(part in SKIP_DIRS for part in p.relative_to(folder).parts) or not p.is_file():
@@ -101,7 +110,8 @@ if command -v gitleaks >/dev/null 2>&1; then
   gitleaks git --pre-commit --staged --redact --no-banner || {{
     echo "Sentinel: commit blocked - a secret was found in your staged changes."; exit 1; }}
 else
-  "{sys.executable}" "{ROOT / 'agents' / 'sentinel.py'}" --staged || exit 1
+  PY="{sys.executable}"; [ -x "$PY" ] || PY=python3
+  "$PY" "{ROOT / 'agents' / 'sentinel.py'}" --staged || exit 1
 fi
 """)
     hook.chmod(0o755)
@@ -146,11 +156,11 @@ class Sentinel(Agent):
     def scan_secrets(self, target):
         n = 0
         is_repo = (Path(target) / ".git").exists()
-        if shutil.which("gitleaks"):
+        if tool("gitleaks"):
             with tempfile.TemporaryDirectory() as tmp:
                 for mode in (["git"] if is_repo else []) + ["dir"]:
                     rep = Path(tmp) / f"{mode}.json"
-                    subprocess.run(["gitleaks", mode, str(target), "--no-banner", "--redact",
+                    subprocess.run([tool("gitleaks"), mode, str(target), "--no-banner", "--redact",
                                     "-f", "json", "-r", str(rep)], capture_output=True, timeout=600)
                     if not rep.exists():
                         continue
@@ -164,7 +174,15 @@ class Sentinel(Agent):
                                  "Rotate the key now (deleting it isn't enough once committed), then keep it in .env.")
         # Built-in patterns always run too: they cover keys gitleaks's rules can miss
         # (e.g. Alpaca and Telegram tokens). Duplicates collapse because findings are keyed by location.
+        ignored = set()
+        if is_repo:
+            envs = [str(p.relative_to(target)) for p in Path(target).glob(".env*")]
+            out = subprocess.run(["git", "-C", str(target), "check-ignore", *envs],
+                                 capture_output=True, text=True) if envs else None
+            ignored = set(out.stdout.split()) if out else set()
         for p in files_in(target):
+            if str(p.relative_to(target)) in ignored:
+                continue  # secrets in a git-ignored .env are exactly where they should be
             try:
                 hits = list(find_secrets_in_text(p.read_text(errors="ignore")))
             except Exception:
@@ -213,13 +231,13 @@ class Sentinel(Agent):
 
     # 3. vulnerable packages
     def scan_deps(self, target):
-        if not shutil.which("pip-audit"):
+        if not tool("pip-audit"):
             return 0
         n = 0
         for req in Path(target).rglob("requirements*.txt"):
             if any(part in SKIP_DIRS for part in req.relative_to(target).parts):
                 continue
-            out = subprocess.run(["pip-audit", "-r", str(req), "-f", "json", "--progress-spinner", "off"],
+            out = subprocess.run([tool("pip-audit"), "-r", str(req), "-f", "json", "--progress-spinner", "off"],
                                  capture_output=True, text=True, timeout=600)
             try:
                 deps = json.loads(out.stdout).get("dependencies", [])
@@ -243,8 +261,8 @@ class Sentinel(Agent):
     # 4. risky code
     def scan_code(self, target):
         n = 0
-        if shutil.which("bandit"):
-            out = subprocess.run(["bandit", "-r", str(target), "-f", "json", "-q",
+        if tool("bandit"):
+            out = subprocess.run([tool("bandit"), "-r", str(target), "-f", "json", "-q",
                                   "-x", ",".join(f"*/{d}/*" for d in SKIP_DIRS)],
                                  capture_output=True, text=True, timeout=600)
             try:
@@ -316,7 +334,7 @@ class Sentinel(Agent):
                       WHERE ts < ? AND status='open' AND check_name != 'Possible prompt injection'""", (started,))
         counts = {r["severity"]: r["n"] for r in
                   db.rows("SELECT severity, COUNT(*) n FROM findings WHERE status='open' GROUP BY severity")}
-        tools = [t for t in ("gitleaks", "pip-audit", "bandit") if shutil.which(t)]
+        tools = [t for t in ("gitleaks", "pip-audit", "bandit") if tool(t)]
         self.log(f"Scanned {scanned} projects with {', '.join(tools) or 'built-in checks'}. "
                  f"Open: {counts.get('high', 0)} high, {counts.get('medium', 0)} medium, {counts.get('low', 0)} low.")
         if counts.get("high"):

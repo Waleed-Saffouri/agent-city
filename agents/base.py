@@ -31,14 +31,19 @@ class Agent:
         db.send(self.name, to, text)
 
     # ---- Permissions (the "StarNet" idea): every outside action goes through a check. ----
+    def may(self, action, target=""):
+        """Check a permission quietly (for deciding whether to even try)."""
+        rules = PERMISSIONS.get(self.name, {}).get(action, [])
+        return any(target == r or (r.startswith("*.") and target.endswith(r[1:])) for r in rules)
+
     def allowed(self, action, target=""):
-        rules = PERMISSIONS.get(self.name, {})
-        ok = target in rules.get(action, []) or "*" in rules.get(action, [])
+        """Check a permission for a real attempt; refusals are logged for Sentinel."""
+        ok = self.may(action, target)
         if not ok:
             db.log(self.name, "blocked", f"BLOCKED {action} → {target or '(none)'} (not in its permissions)")
         return ok
 
-    def fetch(self, url, timeout=60):
+    def fetch(self, url, timeout=60, raw=False):
         """The only way an agent may reach the internet. Hosts not on its list are refused and logged."""
         parts = urllib.parse.urlparse(url)
         host = parts.hostname or ""
@@ -46,9 +51,10 @@ class Agent:
             raise PermissionDenied(f"{self.name} may only use https, not {parts.scheme}")
         if not self.allowed("network", host):
             raise PermissionDenied(f"{self.name} may not contact {host}")
-        req = urllib.request.Request(url, headers={"User-Agent": "agent-city"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (agent-city)"})
         with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310 - scheme and host checked above
-            return json.load(r)
+            body = r.read(3_000_000 if raw else 80_000_000)   # pages are small; job lists can be ~40 MB
+        return body.decode("utf-8", "ignore") if raw else json.loads(body)
 
     def notify(self, text):
         """Send a phone alert through Telegram, if you've set it up. Only allowed agents may."""

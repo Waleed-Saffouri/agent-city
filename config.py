@@ -69,9 +69,13 @@ OFF_TOPIC = {
 # Simplify's job categories that fit you best.
 GOOD_CATEGORIES = {"AI/ML/Data": 8, "Quant": 10, "Product": 0}
 
-# You graduate in May 2027, so summer-2027 internships (which usually need you to still be a
-# student afterwards) are worth less than full-time roles. Spring/winter/co-op ones are fine.
-INTERNSHIP_PENALTY = 15
+# Your two goals:
+#   1. a Spring 2027 internship (Jan–May, while you're still a student)
+#   2. a full-time job starting after you graduate in May 2027
+# Internships for these terms count as goal 1. Summer/fall internships are skipped, because they
+# usually require you to still be a student afterwards.
+INTERNSHIP_TERMS = ["Spring 2027", "Winter 2027"]
+SPRING_BONUS = 10
 
 PREFERRED_LOCATIONS = {  # substring -> points
     "new york": 15, "nyc": 15, "remote": 12, "washington": 10, ", va": 10, "virginia": 10,
@@ -95,7 +99,12 @@ SENTINEL_TARGETS = [p for p in os.environ.get("SENTINEL_TARGETS", str(Path.home(
 # both of which check this list and log anything blocked. Sentinel reports blocked attempts.
 PERMISSIONS = {
     "manager":  {"network": ["api.telegram.org"], "ai": ["think"]},
-    "scout":    {"network": ["raw.githubusercontent.com", "boards-api.greenhouse.io"], "ai": ["think"]},
+    "scout":    {"network": ["raw.githubusercontent.com", "boards-api.greenhouse.io",
+                             # job posting pages, read only to find the salary:
+                             "boards.greenhouse.io", "job-boards.greenhouse.io", "*.lever.co",
+                             "jobs.ashbyhq.com", "apply.workable.com", "ats.rippling.com", "*.myworkdayjobs.com", "jobs.smartrecruiters.com",
+                             "*.icims.com", "*.oraclecloud.com"],
+                 "ai": ["think"]},
     "sentinel": {"network": [], "ai": []},   # scanners run locally; Sentinel never needs AI
     "writer":   {"network": ["boards-api.greenhouse.io"], "ai": ["think"]},
 }

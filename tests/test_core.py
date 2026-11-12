@@ -35,10 +35,10 @@ def test_off_topic_penalized():
     assert bad < good - 20
 
 
-def test_summer_internship_penalized():
-    full, _ = score_job(job("Data Analyst"), "new_grad")
-    summer, _ = score_job(job("Data Analyst Intern"), "internships")
-    assert summer < full
+def test_spring_internship_gets_goal_bonus():
+    plain, _ = score_job(job("Data Analyst Intern", terms=["N/A"]), "company_boards")
+    spring, reasons = score_job(job("Data Analyst Intern", terms=["Spring 2027"]), "internships")
+    assert spring > plain and any("Spring 2027" in r for r in reasons)
 
 
 def test_sentinel_finds_planted_secret(tmp_path, monkeypatch):
@@ -110,3 +110,45 @@ def test_writer_catches_invented_numbers():
     cv = "Merged 855 months of data; value beat growth by 0.44% per month; 48-page report"
     assert unsupported_numbers("I analyzed 855 months and wrote a 48-page report", cv) == []
     assert unsupported_numbers("I grew revenue 40% across 12 clients", cv) == ["12", "40%"]
+
+
+def test_tracks_and_salary():
+    from agents.job_scout import salary_from, track_of
+    assert track_of({"title": "Data Analyst"}, "new_grad") == "fulltime"
+    assert track_of({"title": "Data Intern", "terms": ["Spring 2027"]}, "internships") == "internship"
+    assert track_of({"title": "Data Intern", "terms": ["Summer 2027"]}, "internships") is None
+    assert track_of({"title": "2027 Data Science Intern"}, "company_boards") is None
+    assert track_of({"title": "Spring 2027 Analytics Intern"}, "company_boards") == "internship"
+    assert salary_from("The base pay range is $85,000 - $105,000 per year.") == "$85K–$105K"
+    assert salary_from("Pay: $25 - $30 per hour") == "$25–$30/hr"
+    assert salary_from("Founded in 2010 with 120-150 people") == ""
+
+
+def test_salary_from_job_page():
+    from agents.job_scout import salary_from_page
+    page = ('<script type="application/ld+json">{"@type":"JobPosting","baseSalary":{"@type":"MonetaryAmount",'
+            '"currency":"USD","value":{"@type":"QuantitativeValue","minValue":72000,"maxValue":90000,'
+            '"unitText":"YEAR"}}}</script>')
+    assert salary_from_page(page) == "$72K–$90K"
+    assert salary_from_page("<p>Compensation: $22.00 - $26.00 per hour</p>") == "$22–$26/hr"
+
+
+def test_wildcard_permission(tmp_path, monkeypatch):
+    import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "w.db"); db.init()
+    from agents.job_scout import JobScout
+    s = JobScout()
+    assert s.allowed("network", "acme.wd5.myworkdayjobs.com")
+    assert not s.allowed("network", "myworkdayjobs.com.evil.io")
+
+
+def test_ignored_env_not_reported(tmp_path, monkeypatch):
+    import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "e.db"); db.init()
+    repo = tmp_path / "bot"; repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)])
+    (repo / ".gitignore").write_text(".env\n")
+    (repo / ".env").write_text("TOKEN=ghp_" + "Z9y8X7w6" * 5 + "\n")
+    from agents.sentinel import Sentinel
+    Sentinel().scan_secrets(repo)
+    assert not db.rows("SELECT * FROM findings WHERE location LIKE '.env%'")

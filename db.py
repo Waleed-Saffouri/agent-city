@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS messages (      -- the message board agents use to ta
 CREATE TABLE IF NOT EXISTS jobs (          -- what the Job Scout finds
   id TEXT PRIMARY KEY, ts REAL, company TEXT, title TEXT, locations TEXT, url TEXT,
   source TEXT, posted REAL, score INTEGER, reasons TEXT,
-  status TEXT DEFAULT 'pending'            -- pending -> approved / skipped / applied
+  status TEXT DEFAULT 'pending',           -- pending -> approved / skipped / applied
+  track TEXT DEFAULT 'fulltime',           -- 'internship' (Spring 2027) or 'fulltime' (after May 2027)
+  salary TEXT DEFAULT ''                   -- pay range when the posting lists one
 );
 CREATE TABLE IF NOT EXISTS briefs (        -- the manager's morning briefs
   id INTEGER PRIMARY KEY, ts REAL, text TEXT
@@ -52,6 +54,11 @@ def conn():
 def init():
     with conn() as c:
         c.executescript(SCHEMA)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(jobs)")}   # upgrade older databases
+        if "track" not in cols:
+            c.execute("ALTER TABLE jobs ADD COLUMN track TEXT DEFAULT 'fulltime'")
+        if "salary" not in cols:
+            c.execute("ALTER TABLE jobs ADD COLUMN salary TEXT DEFAULT ''")
 
 
 def rows(sql, args=()):

@@ -1,5 +1,6 @@
 fastapi
 uvicorn
 pip-audit
+bandit
 pytest
 anthropic  # optional: only if you use an API key instead of Claude Code

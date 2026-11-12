@@ -29,7 +29,11 @@ class Manager(Agent):
         since = time.time() - 86400
         return {
             "messages": db.rows("SELECT sender, text FROM messages WHERE recipient='manager' AND ts > ? ORDER BY ts", (since,)),
-            "pending": db.rows("SELECT company, title, score FROM jobs WHERE status='pending' ORDER BY score DESC LIMIT 5"),
+            "pending": db.rows("SELECT company, title, score, track, salary FROM jobs WHERE status='pending' ORDER BY score DESC LIMIT 5"),
+            "top_spring_internships": db.rows("""SELECT company, title, score, salary FROM jobs WHERE status='pending'
+                                                 AND track='internship' ORDER BY score DESC LIMIT 3"""),
+            "top_fulltime_jobs": db.rows("""SELECT company, title, score, salary FROM jobs WHERE status='pending'
+                                            AND track='fulltime' ORDER BY score DESC LIMIT 3"""),
             "pending_count": db.rows("SELECT COUNT(*) n FROM jobs WHERE status='pending'")[0]["n"],
             "errors": db.rows("SELECT agent FROM agent_state WHERE status='error'"),
             "tracker": tracker_stats(),
@@ -49,8 +53,9 @@ class Manager(Agent):
         g = self.gather()  # refresh after any restarts
 
         prompt = ("You are the manager of Waleed's personal AI agent city. Write a short, friendly "
-                  "morning brief (under 150 words, bullet points) from this data. Highlight what needs "
-                  f"his approval first.\n\nDATA: {g}")
+                  "morning brief (under 170 words, bullet points) from this data. He has two goals: a Spring 2027 "
+                  "internship and a full-time job after May 2027, so list the best of each separately (with pay "
+                  f"when known). Highlight what needs his approval first.\n\nDATA: {g}")
         brief = self.think(prompt) or self.template_brief(g)
         db.execute("INSERT INTO briefs(ts, text) VALUES (?,?)", (time.time(), brief))
         self.send("all", "Morning brief is ready.")
