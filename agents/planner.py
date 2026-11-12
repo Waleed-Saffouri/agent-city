@@ -92,22 +92,16 @@ class Planner(Agent):
 
     def split(self, text):
         today = date.today()
-        answer = self.think(
+        raw = self.think_json(
             f"Today is {today:%A, %B %d, %Y}. Waleed wrote this brain dump. Split it into separate items.\n"
             "Return ONLY a JSON list. Each item: {\"title\": short imperative to-do in his words, "
             "\"kind\": \"task\"|\"reminder\"|\"idea\", \"due\": \"YYYY-MM-DD\" or null (work out "
             "words like friday / the 19th / next week from today's date), \"time\": \"HH:MM\" or null, "
             "\"priority\": \"high\"|\"normal\", \"project\": short tag like IBM, School, Agent City, "
             "Trading bot, or \"\"}. Don't invent tasks he didn't mention. Split combined thoughts.\n\n"
-            f"BRAIN DUMP:\n{text}", max_tokens=1500)
-        if answer and "[" in answer:
-            try:
-                items = clean_items(json.loads(answer[answer.index("["):answer.rindex("]") + 1]))
-                if items:
-                    return items, "ai"
-            except ValueError:
-                pass
-        return rule_split(text), "rules"
+            f"BRAIN DUMP:\n{text}", opener="[", max_tokens=1500)
+        items = clean_items(raw) if raw is not None else []
+        return (items, "ai") if items else (rule_split(text), "rules")
 
     def capture(self, text):
         """Save a brain dump and turn it into tasks right away."""

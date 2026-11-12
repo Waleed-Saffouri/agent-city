@@ -18,7 +18,17 @@ def job(title, company="Acme", locs=("New York, NY",), days=1, **kw):
 
 def test_good_fit_scores_high():
     s, reasons = score_job(job("Data Analyst"), "new_grad")
-    assert s >= 60 and "preferred location" in reasons
+    assert s >= 75 and any("top choice" in r for r in reasons)
+
+
+def test_location_tiers():
+    from agents.job_scout import location_points
+    assert location_points(["McLean, VA"])[0] == 25 and location_points(["Washington, DC"])[0] == 25
+    assert location_points(["Austin, TX"])[0] == 15
+    assert location_points(["Boise, ID"])[0] < 0 and location_points(["Des Moines, IA"])[0] < 0
+    assert location_points(["Boise, ID", "NYC"])[0] == 25   # best location counts
+    assert location_points(["Smithfield, VA"])[0] < 0       # small-town Virginia isn't the DMV
+    assert location_points(["Bethpage, NY"])[0] == 15
 
 
 def test_defense_company_blocked():

@@ -393,7 +393,7 @@ const VIEWS = {
     const tabs = [["internship", "Spring 2027 internships"], ["fulltime", "Jobs after May"]];
     const jobs = all.filter(j => (j.track || "fulltime") === scoutTab);
     const list = jobs.length ? jobs.map(j => `<div class="item">
-        <div class="fit"><strong>${j.score}</strong><small>fit</small></div>
+        <div class="fit"><strong>${j.score}</strong><small>${j.score >= 80 ? "great" : j.score >= 65 ? "good" : "maybe"}</small></div>
         <div class="meta"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a>
           <div class="sub">${esc(j.company)} · ${esc((j.locations || "").split(";").slice(0,2).join(";"))}</div>
           <div class="pay ${j.salary ? "" : "none"}">${j.salary ? esc(j.salary) : "Pay not listed"}</div>

@@ -100,11 +100,30 @@ class Agent:
         except Exception:
             return None
 
-    def think(self, prompt, max_tokens=800):
+    def think_json(self, prompt, opener="{", max_tokens=1500):
+        """Ask for JSON and make sure we get valid JSON back. Tries the free local model first
+        (workers only); if its answer doesn't parse, asks Claude instead of giving up."""
+        closer = "}" if opener == "{" else "]"
+
+        def parse(text):
+            if not text or opener not in text or closer not in text:
+                return None
+            try:
+                return json.loads(text[text.index(opener):text.rindex(closer) + 1])
+            except ValueError:
+                return None
+
+        if self.tier == "worker" and self.allowed("ai", "think"):
+            got = parse(self._think_ollama(prompt))
+            if got is not None:
+                return got
+        return parse(self.think(prompt, max_tokens, local=False))
+
+    def think(self, prompt, max_tokens=800, local=True):
         if not self.allowed("ai", "think"):
             return None
         # Workers try the free local model first, so easy jobs cost nothing.
-        if self.tier == "worker":
+        if local and self.tier == "worker":
             local = self._think_ollama(prompt)
             if local:
                 return local

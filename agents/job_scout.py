@@ -17,7 +17,8 @@ import db
 from agents import guard
 from agents.base import Agent
 from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, INTERNSHIP_TERMS, JOB_SOURCES, SPRING_BONUS,
-                    MAX_AGE_DAYS, OFF_TOPIC, PREFERRED_LOCATIONS, SKIP_TITLE, TITLE_KEYWORDS)
+                    LOCATION_TIERS, OTHER_LOCATION_POINTS,
+                    MAX_AGE_DAYS, OFF_TOPIC, SKIP_TITLE, TITLE_KEYWORDS)
 
 PROFILE = ("Waleed: Computational & Data Sciences B.S. (GMU, May 2027) with a finance minor. "
            "Skills: Python, SQL, pandas, statistics, Power BI, AWS basics, an algorithmic trading bot. "
@@ -119,6 +120,22 @@ def salary_from_page(page):
     return salary_from(text)
 
 
+def location_points(locs):
+    """Points for the best location in a posting, and which one it was."""
+    best, where = None, ""
+    for loc in locs or []:
+        low = loc.lower()
+        pts = next((p for p, keys in sorted(LOCATION_TIERS.items(), reverse=True) if any(k in low for k in keys)),
+                   OTHER_LOCATION_POINTS)
+        if best is None or pts > best:
+            best, where = pts, loc.split(",")[0].strip()
+    return (best if best is not None else OTHER_LOCATION_POINTS), where
+
+
+def fit_label(score):
+    return "Great fit" if score >= 80 else "Good fit" if score >= 65 else "Worth a look"
+
+
 def words(title):
     return {w for w in re.findall(r"[a-z]+", title.lower()) if w not in STOP and len(w) > 2}
 
@@ -175,10 +192,14 @@ def score_job(job, source="", liked=None, disliked=None):
         score += cat
         reasons.append(f"{job['category']} category")
 
-    loc_pts = max((pts for kw, pts in PREFERRED_LOCATIONS.items() if kw in locs), default=0)
-    if loc_pts:
-        score += loc_pts
-        reasons.append("preferred location")
+    loc_pts, where = location_points(job.get("locations", []))
+    score += loc_pts
+    if loc_pts >= 25:
+        reasons.append(f"{where} (top choice)")
+    elif loc_pts > 0:
+        reasons.append(f"{where} (good city)")
+    elif loc_pts < 0:
+        reasons.append("only in places you didn't pick")
 
     age_days = (time.time() - job.get("date_posted", 0)) / 86400
     if age_days <= 3:
@@ -248,22 +269,18 @@ class JobScout(Agent):
         listing = "\n".join(f"{i}. [{'Spring internship' if r[10] == 'internship' else 'full-time'}] "
                             f"{guard.clean(r[2], 60)} | {guard.clean(r[3], 120)} | {guard.clean(r[4], 60)}"
                             for i, r in enumerate(top))
-        answer = self.think(
-            f"{PROFILE}\n\nRate how well each job below fits him from -20 (bad fit) to +20 (great fit). "
+        adj = self.think_json(
+            f"{PROFILE}\n\nRate how well each job below fits him from -15 (bad fit) to +15 (great fit). "
             f"Reply with ONLY a JSON object mapping the number to [adjustment, 'short reason'].\n\n"
-            + guard.wrap("job listings", listing), max_tokens=1500)
-        if not answer:
-            return rows
-        try:
-            adj = json.loads(answer[answer.index("{"):answer.rindex("}") + 1])
-        except ValueError:
-            self.log("AI re-rank reply wasn't readable; kept rule scores.", "warn")
+            + guard.wrap("job listings", listing), opener="{", max_tokens=1500)
+        if not isinstance(adj, dict):
+            self.log("AI second opinion unavailable today; kept rule scores.", "warn")
             return rows
         out = {r[0]: r for r in rows}
         for i, r in enumerate(top):
             a = adj.get(str(i))
             if isinstance(a, list) and len(a) == 2:
-                delta = max(-20, min(20, int(a[0])))
+                delta = max(-15, min(15, int(a[0])))
                 reasons = json.loads(r[9]) + [f"AI: {a[1]}"]
                 out[r[0]] = r[:8] + (max(0, min(100, r[8] + delta)), json.dumps(reasons)) + r[10:]
         self.log(f"AI re-checked the top {len(top)} matches.")
@@ -318,7 +335,7 @@ class JobScout(Agent):
                        for a in applied):
                     continue  # you've already applied there
                 score, reasons = score_job(j, src, liked, disliked)
-                if score < 45:
+                if score < 50:
                     continue
                 new.append((jid, time.time(), j["company_name"], j["title"],
                             "; ".join(j.get("locations", []))[:200], j.get("url", ""),

@@ -13,8 +13,12 @@ if _env.exists():
             os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 DB_PATH = ROOT / "data" / "city.db"
 
-# Your career-ops tracker (used by the Manager for stats). Leave as-is if you don't have it.
-TRACKER_PATH = Path(os.environ.get("TRACKER_PATH", Path.home() / "career-ops" / "data" / "applications.md"))
+# Your applications tracker (Markdown table). Used for stats and so the Scout never suggests a company
+# you've already applied to. profile/applications.md is private (git ignores it).
+_tracker_default = ROOT / "profile" / "applications.md"
+if not _tracker_default.exists():
+    _tracker_default = Path.home() / "career-ops" / "data" / "applications.md"
+TRACKER_PATH = Path(os.environ.get("TRACKER_PATH", _tracker_default))
 
 # ---- Model tiering (idea from the "Ultron" clip) ----
 # Smart (expensive) model for the manager, cheap model for repetitive workers.
@@ -51,11 +55,14 @@ GREENHOUSE_COMPANIES = [
 ]
 MAX_AGE_DAYS = 21
 
+# Fit score, out of 100. A great match (right title + top city + fresh + right field) lands ~85-95.
+#   title up to 35 · location +25 / +15 / 0 / -20 · freshness up to 20 · field up to 10
+#   Spring 2027 internship +10 · AI second opinion -15..+15
 TITLE_KEYWORDS = {  # keyword -> points
-    "data analyst": 30, "data scientist": 30, "data science": 28, "analytics": 22,
-    "business intelligence": 25, "bi ": 15, "quantitative": 20, "financial analyst": 18,
-    "risk analyst": 18, "data engineer": 15, "machine learning": 12, "security analyst": 12,
-    "cyber": 10, "consultant": 10, "insights": 15, "reporting": 10,
+    "data analyst": 35, "data scientist": 35, "data science": 33, "analytics": 28,
+    "business intelligence": 30, "bi ": 18, "quantitative": 25, "financial analyst": 25,
+    "risk analyst": 25, "data engineer": 20, "machine learning": 18, "security analyst": 18,
+    "cyber": 15, "consultant": 15, "insights": 22, "reporting": 15, "investment analyst": 28,
 }
 SKIP_TITLE = ["senior", "sr.", "staff", "principal", "lead", "manager", "director", "phd", "master's",
               "apprentice", "postdoc"]
@@ -77,17 +84,29 @@ GOOD_CATEGORIES = {"AI/ML/Data": 8, "Quant": 10, "Product": 0}
 INTERNSHIP_TERMS = ["Spring 2027", "Winter 2027"]
 SPRING_BONUS = 10
 
-PREFERRED_LOCATIONS = {  # substring -> points
-    "new york": 15, "nyc": 15, "remote": 12, "washington": 10, ", va": 10, "virginia": 10,
-    "mclean": 10, "arlington": 10, "austin": 10, "durham": 8, "raleigh": 8, "chicago": 6,
-    "london": 12,
+# Where you'd move. The best location in a posting counts. Anywhere not listed costs points,
+# so jobs only in small towns sink to the bottom or drop out.
+LOCATION_TIERS = {
+    25: ["new york", "nyc", "manhattan", "brooklyn", "jersey city", "hoboken",            # NYC
+         "washington, dc", "washington dc", ", dc", "district of columbia", "arlington", "mclean",  # DMV
+         "reston", "tysons", "fairfax", "alexandria", "herndon", "vienna, va", "chantilly",
+         "bethesda", "rockville", "silver spring", "gaithersburg", "college park", "falls church",
+         "ashburn", "sterling, va", "manassas", "leesburg", "dmv"],
+    15: ["austin", "dallas", "houston", "plano", "irving", "fort worth", "frisco",             # Texas
+         "raleigh", "durham", "charlotte", "chapel hill", "research triangle", "cary, nc",    # NC
+         "remote", "london", "chicago", "boston",
+         ", ny", "long island", "stamford", "newark", "baltimore", "columbia, md"],                # near NYC / DC
+    0:  ["richmond", "philadelphia", "atlanta", "miami", "seattle", "san francisco", "los angeles", "denver",
+         "united states", "us remote"],
 }
+OTHER_LOCATION_POINTS = -20
 
 # Companies you don't want (government / defense contractors).
 AVOID_COMPANIES = [
     "lockheed", "palantir", "leidos", "caci", "saic", "northrop", "raytheon", "rtx",
     "general dynamics", "bae systems", "booz", "mitre", "peraton", "mantech", "l3harris",
-    "anduril", "boeing", "noblis", "parsons", "amentum", "gdit", "federal",
+    "anduril", "boeing", "noblis", "parsons", "amentum", "gdit", "federal", "steampunk", "guidehouse",
+    "maximus", "accenture federal", "deloitte government", "cgi federal", "icf",
 ]
 
 # ---- Sentinel (security) ----
