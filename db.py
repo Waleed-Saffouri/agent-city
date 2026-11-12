@@ -82,3 +82,13 @@ def tokens_today():
     start = time.time() - (time.time() % 86400)
     r = rows("SELECT COALESCE(SUM(tokens),0) AS t FROM token_usage WHERE ts >= ?", (start,))
     return r[0]["t"]
+
+
+def add_finding(severity, check, target, location, detail, fix):
+    """Record a security finding (used by Sentinel, and by any agent that spots something)."""
+    import hashlib
+    key = hashlib.sha1("|".join([check, str(target), location, detail]).encode(), usedforsecurity=False).hexdigest()[:16]
+    execute("""INSERT INTO findings(id, ts, severity, check_name, target, location, detail, fix)
+               VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET ts=excluded.ts, status='open'""",
+            (key, time.time(), severity, check, str(target), location, detail, fix))
+    return key

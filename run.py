@@ -2,6 +2,7 @@
 
     python run.py scout        # run one agent
     python run.py morning      # scout, sentinel, then manager (the daily routine)
+    python run.py protect PATH # install Sentinel's pre-commit hook in a git repo (blocks leaked keys)
     python run.py schedule     # keep running and do the morning routine every day at 7:00
 """
 import sys
@@ -37,6 +38,10 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "morning"
     if cmd == "morning":
         morning()
+    elif cmd == "protect":
+        from agents.sentinel import install_hook
+        for repo in sys.argv[2:] or ["."]:
+            print(f"{repo}: {install_hook(repo)}")
     elif cmd == "schedule":
         schedule()
     else:

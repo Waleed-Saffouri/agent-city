@@ -12,6 +12,7 @@ import urllib.request
 from collections import Counter
 
 import db
+from agents import guard
 from agents.base import Agent
 from config import (AVOID_COMPANIES, GOOD_CATEGORIES, INTERNSHIP_PENALTY, JOB_SOURCES,
                     MAX_AGE_DAYS, OFF_TOPIC, PREFERRED_LOCATIONS, SKIP_TITLE, TITLE_KEYWORDS)
@@ -115,20 +116,27 @@ class JobScout(Agent):
     tier = "worker"
     role = "Finds new jobs every morning and queues the best ones for your approval."
 
-    def fetch(self, url):
-        with urllib.request.urlopen(url, timeout=60) as r:
-            return json.load(r)
-
     def ai_rerank(self, rows):
         """One AI call for the whole batch (not one per job) to keep usage tiny."""
-        top = sorted(rows, key=lambda r: -r[8])[:25]
+        top = []
+        for r in sorted(rows, key=lambda r: -r[8]):
+            signs = guard.check(f"{r[2]} {r[3]} {r[4]}")
+            if signs:  # never show a suspicious posting to the AI
+                db.add_finding("high", "Possible prompt injection", "job feed", f"{r[2]} – {guard.clean(r[3], 60)}",
+                               "Posting text " + "; ".join(signs), "Kept away from the AI. Skip this posting.")
+                self.log(f"Held back a suspicious posting from {r[2]}: {signs[0]}.", "alert")
+                continue
+            top.append(r)
+            if len(top) == 25:
+                break
         if not top:
             return rows
-        listing = "\n".join(f"{i}. {r[2]} | {r[3]} | {r[4][:60]}" for i, r in enumerate(top))
+        listing = "\n".join(f"{i}. {guard.clean(r[2], 60)} | {guard.clean(r[3], 120)} | {guard.clean(r[4], 60)}"
+                            for i, r in enumerate(top))
         answer = self.think(
-            f"{PROFILE}\n\nRate how well each job fits him from -20 (bad fit) to +20 (great fit). "
-            f"Reply with ONLY a JSON object mapping the number to [adjustment, 'short reason'].\n\n{listing}",
-            max_tokens=1500)
+            f"{PROFILE}\n\nRate how well each job below fits him from -20 (bad fit) to +20 (great fit). "
+            f"Reply with ONLY a JSON object mapping the number to [adjustment, 'short reason'].\n\n"
+            + guard.wrap("job listings", listing), max_tokens=1500)
         if not answer:
             return rows
         try:

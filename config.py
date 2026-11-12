@@ -73,9 +73,12 @@ AVOID_COMPANIES = [
 # Folders Sentinel scans. Agent City itself is always included.
 SENTINEL_TARGETS = [p for p in os.environ.get("SENTINEL_TARGETS", str(Path.home() / "claude_code")).split(":") if p]
 
-# What each agent is allowed to do (the "StarNet" permissions idea). Sentinel flags anything else.
+# What each agent is allowed to do (the "StarNet" permissions idea). This is ENFORCED:
+# agents reach the internet only through Agent.fetch() and the AI only through Agent.think(),
+# both of which check this list and log anything blocked. Sentinel reports blocked attempts.
 PERMISSIONS = {
-    "manager":  {"network": [], "writes": ["briefs", "messages"]},
-    "scout":    {"network": ["raw.githubusercontent.com"], "writes": ["jobs", "messages"]},
-    "sentinel": {"network": ["pypi.org", "osv.dev"], "writes": ["findings", "messages"]},
+    "manager":  {"network": [], "ai": ["think"]},
+    "scout":    {"network": ["raw.githubusercontent.com"], "ai": ["think"]},
+    "sentinel": {"network": [], "ai": []},   # scanners run locally; Sentinel never needs AI
+    "writer":   {"network": [], "ai": ["think"]},
 }

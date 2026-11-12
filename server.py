@@ -74,6 +74,13 @@ def job_action(job_id: str, action: str):
     return {"ok": True}
 
 
+@app.post("/api/findings/{fid}/dismiss")
+def dismiss(fid: str):
+    db.execute("UPDATE findings SET status='dismissed' WHERE id=?", (fid,))
+    db.log("you", "decision", "Dismissed a security finding.")
+    return {"ok": True}
+
+
 class Chat(BaseModel):
     text: str
 
