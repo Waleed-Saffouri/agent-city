@@ -50,6 +50,20 @@ class Agent:
         with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310 - scheme and host checked above
             return json.load(r)
 
+    def notify(self, text):
+        """Send a phone alert through Telegram, if you've set it up. Only allowed agents may."""
+        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+        if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID) or not self.allowed("network", "api.telegram.org"):
+            return False
+        data = urllib.parse.urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": text[:4000]}).encode()
+        try:
+            req = urllib.request.Request(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data=data)
+            urllib.request.urlopen(req, timeout=20).close()  # nosec B310 - fixed https URL
+            return True
+        except Exception as e:
+            self.log(f"Phone alert failed: {type(e).__name__}", "warn")  # never log the token
+            return False
+
     def inbox(self, since=0):
         return db.rows("SELECT * FROM messages WHERE recipient IN (?, 'all') AND ts > ? ORDER BY ts",
                        (self.name, since))

@@ -13,12 +13,13 @@ import db
 from agents.job_scout import JobScout
 from agents.manager import Manager
 from agents.sentinel import Sentinel
+from agents.writer import Writer
 
-AGENTS = {"scout": JobScout, "sentinel": Sentinel, "manager": Manager}
+AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "manager": Manager}
 
 
 def morning():
-    for name in ("scout", "sentinel", "manager"):  # manager last, so the brief sees everything
+    for name in ("scout", "sentinel", "writer", "manager"):  # manager last, so the brief sees everything
         AGENTS[name]().run()
 
 

@@ -5,7 +5,9 @@
 import json
 import threading
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -13,9 +15,10 @@ import db
 from agents.job_scout import JobScout
 from agents.manager import Manager
 from agents.sentinel import Sentinel
+from agents.writer import Writer
 from config import DAILY_TOKEN_BUDGET, ROOT
 
-AGENTS = {"scout": JobScout, "sentinel": Sentinel, "manager": Manager}
+AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "manager": Manager}
 app = FastAPI(title="Agent City")
 db.init()
 
@@ -46,6 +49,10 @@ def state():
         "messages": db.rows("SELECT * FROM messages ORDER BY ts DESC LIMIT 15"),
         "activity": db.rows("SELECT * FROM activity ORDER BY ts DESC LIMIT 30"),
         "tokens": {"used": db.tokens_today(), "budget": DAILY_TOKEN_BUDGET},
+        "drafts": db.rows("""SELECT d.*, j.company, j.title, j.url FROM drafts d JOIN jobs j ON j.id = d.job_id
+                             ORDER BY d.ts DESC LIMIT 20"""),
+        "approved_waiting": db.rows("""SELECT j.id, j.company, j.title FROM jobs j LEFT JOIN drafts d ON d.job_id = j.id
+                                       WHERE j.status='approved' AND d.job_id IS NULL"""),
         "findings": db.rows("""SELECT * FROM findings WHERE status='open' ORDER BY
                                CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, ts DESC LIMIT 30"""),
     }
@@ -55,7 +62,7 @@ def state():
 def run_agent(name: str):
     if name == "morning":
         def go():
-            JobScout().run(); Sentinel().run(); Manager().run()
+            JobScout().run(); Sentinel().run(); Writer().run(); Manager().run()
     else:
         go = AGENTS[name]().run
     threading.Thread(target=go, daemon=True).start()
@@ -70,8 +77,17 @@ def job_action(job_id: str, action: str):
     if job:
         db.log("you", "decision", f"{status.title()}: {job[0]['company']} – {job[0]['title']}")
         if status == "approved":
-            db.send("you", "manager", f"Approved {job[0]['company']}. Prepare the application.")
+            db.send("you", "writer", f"Approved {job[0]['company']}. Please draft the application.")
+            threading.Thread(target=Writer().run, daemon=True).start()
     return {"ok": True}
+
+
+@app.get("/drafts/{job_id}")
+def draft_letter(job_id: str):
+    d = db.rows("SELECT folder FROM drafts WHERE job_id=?", (job_id,))
+    if not d:
+        raise HTTPException(404, "No draft for that job yet.")
+    return FileResponse(Path(d[0]["folder"]) / "cover_letter.html")
 
 
 @app.post("/api/findings/{fid}/dismiss")

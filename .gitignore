@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 .pkg.tgz
 stale-*
+profile/cv.md

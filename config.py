@@ -3,6 +3,14 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).parent
+
+# Load secrets from a local .env file (git ignores it). Format: NAME=value, one per line.
+_env = ROOT / ".env"
+if _env.exists():
+    for _line in _env.read_text().splitlines():
+        if "=" in _line and not _line.lstrip().startswith("#"):
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 DB_PATH = ROOT / "data" / "city.db"
 
 # Your career-ops tracker (used by the Manager for stats). Leave as-is if you don't have it.
@@ -86,8 +94,20 @@ SENTINEL_TARGETS = [p for p in os.environ.get("SENTINEL_TARGETS", str(Path.home(
 # agents reach the internet only through Agent.fetch() and the AI only through Agent.think(),
 # both of which check this list and log anything blocked. Sentinel reports blocked attempts.
 PERMISSIONS = {
-    "manager":  {"network": [], "ai": ["think"]},
+    "manager":  {"network": ["api.telegram.org"], "ai": ["think"]},
     "scout":    {"network": ["raw.githubusercontent.com", "boards-api.greenhouse.io"], "ai": ["think"]},
     "sentinel": {"network": [], "ai": []},   # scanners run locally; Sentinel never needs AI
-    "writer":   {"network": [], "ai": ["think"]},
+    "writer":   {"network": ["boards-api.greenhouse.io"], "ai": ["think"]},
 }
+
+# ---- Writer ----
+# Your CV in Markdown: the Writer's ONLY source of facts. Kept out of git (it has your contact info).
+CV_PATH = Path(os.environ.get("CV_PATH", ROOT / "profile" / "cv.md"))
+PROFILE_NAME = os.environ.get("PROFILE_NAME", "Waleed Saffouri")
+DRAFTS_DIR = ROOT / "data" / "drafts"
+
+# ---- Phone alerts (optional) ----
+# Same kind of Telegram bot your trading bot uses. Put these two in a .env file (never in code):
+#   TELEGRAM_BOT_TOKEN=...   TELEGRAM_CHAT_ID=...
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")

@@ -34,6 +34,7 @@ class Manager(Agent):
             "errors": db.rows("SELECT agent FROM agent_state WHERE status='error'"),
             "tracker": tracker_stats(),
             "tokens": db.tokens_today(),
+            "drafts_ready": db.rows("SELECT COUNT(*) n FROM drafts WHERE ts > ?", (since,))[0]["n"],
             "security": {r["severity"]: r["n"] for r in db.rows(
                 "SELECT severity, COUNT(*) n FROM findings WHERE status='open' GROUP BY severity")},
         }
@@ -42,7 +43,10 @@ class Manager(Agent):
         g = self.gather()
         # Step in when something breaks (from the "Ultron" clip).
         for e in g["errors"]:
-            self.log(f"{e['agent']} is down. Flagging it in the brief.", "alert")
+            self.log(f"{e['agent']} is down. Restarting it once.", "alert")
+            if self.restart(e["agent"]):
+                self.log(f"{e['agent']} is back up.")
+        g = self.gather()  # refresh after any restarts
 
         prompt = ("You are the manager of Waleed's personal AI agent city. Write a short, friendly "
                   "morning brief (under 150 words, bullet points) from this data. Highlight what needs "
@@ -50,7 +54,23 @@ class Manager(Agent):
         brief = self.think(prompt) or self.template_brief(g)
         db.execute("INSERT INTO briefs(ts, text) VALUES (?,?)", (time.time(), brief))
         self.send("all", "Morning brief is ready.")
+        if self.notify("Agent City morning brief\n\n" + brief.replace("**", "")):
+            self.log("Sent the brief to your phone.")
         return {"pending": g["pending_count"]}
+
+    def restart(self, name):
+        """Ultron move: when a worker crashes, try it again once before bothering you."""
+        from agents.job_scout import JobScout
+        from agents.sentinel import Sentinel
+        from agents.writer import Writer
+        cls = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer}.get(name)
+        if not cls:
+            return False
+        try:
+            cls().run()
+            return True
+        except Exception:
+            return False
 
     @staticmethod
     def template_brief(g):

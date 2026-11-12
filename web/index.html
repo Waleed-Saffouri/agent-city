@@ -13,7 +13,7 @@
 :root{
   --ink:#1b2333; --ink-2:#4a5568; --ink-3:#8a94a6;
   --paper:#f7f8fa; --paper-2:#eceff4; --rule:#dde2ea;
-  --hq:#3d6fe0; --scout:#2fa58c; --sentinel:#e8913a; --alert:#d9434b; --ok:#2f9e6b;
+  --hq:#3d6fe0; --scout:#2fa58c; --sentinel:#e8913a; --writer:#8b5cf6; --alert:#d9434b; --ok:#2f9e6b;
   --world:#1e2a44;
   --r-sm:6px; --r-lg:14px;
   font-family:"Familjen Grotesk", system-ui, sans-serif;
@@ -98,6 +98,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rende
 .sev.high{color:var(--alert)} .sev.medium{color:#b8701f} .sev.low{color:var(--ink-3)}
 .fix{font-size:13px;color:var(--ink);margin-top:4px}
 .fix::before{content:"Fix: ";font-weight:600}
+.item .fix:has(a[href^="/drafts"])::before{content:none}
 .fix a{color:var(--hq)}
 .meta{overflow-wrap:anywhere}
 .tools{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
@@ -136,6 +137,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rende
 <nav class="dock" aria-label="Open a panel">
   <button data-open="manager"><span class="dot" style="background:var(--hq)"></span>Morning brief</button>
   <button data-open="scout"><span class="dot" style="background:var(--scout)"></span><span class="count" id="dJobs">0</span> jobs to review</button>
+  <button data-open="writer"><span class="dot" style="background:var(--writer)"></span><span id="dDrafts">Drafts</span></button>
   <button data-open="sentinel"><span class="dot" id="dSecDot" style="background:var(--sentinel)"></span><span id="dSec">Security</span></button>
   <button data-open="log"><span class="dot" style="background:var(--ink-3)"></span>Work log</button>
 </nav>
@@ -161,11 +163,12 @@ const AGENTS = {
   manager:  { name:"HQ",       title:"Manager",   color:"#3d6fe0", tile:[5,1], size:2, h:118, sign:"HQ" },
   scout:    { name:"Scout",    title:"Job Scout", color:"#2fa58c", tile:[1,2], size:2, h:62,  sign:"SCOUT" },
   sentinel: { name:"Sentinel", title:"Sentinel",  color:"#e8913a", tile:[5,8], size:2, h:84,  sign:"SENTINEL" },
+  writer:   { name:"Writer",   title:"Writer",    color:"#8b5cf6", tile:[9,8], size:2, h:52,  sign:"WRITER" },
 };
 const LOTS = {
   inbox:  { tile:[1,8], size:2, sign:"INBOX",  text:"Inbox Watcher will read recruiter replies and assessment emails, and tell HQ when something needs you." },
   trader: { tile:[8,1], size:2, sign:"TRADER", text:"Trading Tower will run your paper-trading bot and grade it against the S&P 500 every Friday." },
-  school: { tile:[9,8], size:2, sign:"SCHOOL", text:"School will watch Canvas for deadlines and new grades." },
+  school: { tile:[2,10], size:2, sign:"SCHOOL", text:"School will watch Canvas for deadlines and new grades." },
 };
 const N = 12, TW = 64, TH = 32;
 const cvs = $("#city"), g = cvs.getContext("2d");
@@ -296,7 +299,8 @@ function sign(text, at, bg, note){
 }
 
 /* couriers carry each new message along the roads */
-const DOOR = { manager:[4.5,2.5], scout:[4.5,3.5], sentinel:[6,6.5] };
+const DOOR = { manager:[4.5,2.5], scout:[4.5,3.5], sentinel:[6,6.5], writer:[10,6.5] };
+const JUNCTION = [4.5, 6.5];   // where the two roads cross; every courier passes through it
 function spawnCouriers(){
   (S?.messages || []).slice().reverse().forEach(m => {
     if (seenMsgs.has(m.id)) return; seenMsgs.add(m.id);
@@ -309,9 +313,8 @@ function drawCouriers(now){
   for (let k = couriers.length - 1; k >= 0; k--){
     const c = couriers[k], u = (now - c.born)/5000;
     if (u >= 1){ couriers.splice(k, 1); continue; }
-    // walk along the road the sender is on, then turn onto the receiver's road
-    const mid = [c.from[0], c.to[1]];
-    const p = u < .5 ? lerp(c.from, mid, u*2) : lerp(mid, c.to, (u-.5)*2);
+    // walk down the sender's road to the crossing, then up the receiver's road
+    const p = u < .5 ? lerp(c.from, JUNCTION, u*2) : lerp(JUNCTION, c.to, (u-.5)*2);
     const [x, y] = iso(p[0], p[1]); const bob = reduce ? 0 : Math.abs(Math.sin(now/90))*2;
     g.fillStyle = "#1b2333"; g.fillRect(x-2*SC, y-12*SC-bob, 4*SC, 9*SC);
     g.fillStyle = "#f2d2b6"; g.fillRect(x-2*SC, y-16*SC-bob, 4*SC, 4*SC);
@@ -352,7 +355,7 @@ function md(text){  // tiny, safe markdown: bold + bullets + paragraphs
 const statusLine = id => { const a = (S.agents || []).find(x => x.name === id) || {};
   const last = (S.activity || []).find(x => x.agent === id && x.kind === "done");
   return `<span>Status <b>${a.status === "working" ? "working now" : a.status === "error" ? "needs a look" : "idle"}</b></span>
-          <span>Model <b>${a.tier === "manager" ? "Sonnet" : a.name === "sentinel" ? "none (free)" : "Haiku / local"}</b></span>
+          <span>Model <b>${a.name === "sentinel" ? "none (free)" : a.tier === "manager" ? "Sonnet" : "Haiku / local"}</b></span>
           <span>Last run <b>${last ? ago(last.ts) : "not yet"}</b></span>
           <button class="acts" style="margin-left:auto;border:0;background:none;color:var(--hq);font-weight:600;padding:0" onclick="run('${id}')">Run now</button>`; };
 
@@ -392,6 +395,17 @@ const VIEWS = {
       status: statusLine("sentinel"),
       body: `${tools.length ? `<div class="tools">${tools.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}${list}` };
   },
+  writer(){
+    const D = S.drafts || [], W = S.approved_waiting || [];
+    const waiting = W.length ? `<p class="empty" style="padding-top:0">Writing now: ${W.map(w => esc(w.company)).join(", ")}</p>` : "";
+    const list = D.length ? D.map(d => `<div class="item"><div class="sev ${d.status === "ready" ? "low" : "medium"}" style="${d.status === "ready" ? "color:var(--ok)" : ""}">${d.status === "ready" ? "Ready" : "Check"}</div>
+        <div class="meta"><b>${esc(d.company)}</b><div class="sub">${esc(d.title)}</div>
+          ${d.note ? `<div class="sub">${esc(d.note)}</div>` : ""}
+          <div class="fix" style="margin-top:6px"><a href="/drafts/${encodeURIComponent(d.job_id)}" target="_blank" rel="noopener">open the cover letter</a> · <a href="${esc(d.url)}" target="_blank" rel="noopener">job posting</a></div></div></div>`).join("")
+      : `<p class="empty">No drafts yet. Approve a job in the Scout and the Writer drafts a cover letter from your CV within a minute.</p>`;
+    return { title:"Writer", role:"Drafts a cover letter and CV notes for every job you approve, using only facts from your CV.", color:"var(--writer)", tag:"WRT",
+      status: statusLine("writer"), body: waiting + list };
+  },
   log(){
     return { title:"Work log", role:"Everything the agents did, newest first.", color:"var(--ink-2)", tag:"LOG", status:"",
       body: `<div class="log">${(S.activity || []).map(a => `<div><span class="when">${ago(a.ts)}</span><span class="who" style="color:${AGENTS[a.agent]?.color || "var(--ink)"}">${esc(AGENTS[a.agent]?.title || a.agent)}</span> ${esc(a.text)}</div>`).join("")}</div>` };
@@ -410,6 +424,7 @@ function render(force){
   $("#tok").textContent = `${Math.round(S.tokens.used/1000)}k / ${Math.round(S.tokens.budget/1000)}k`;
   $("#tokfill").style.width = Math.min(100, 100*S.tokens.used/S.tokens.budget) + "%";
   $("#dJobs").textContent = S.counts.pending || 0;
+  const nd = (S.drafts || []).length; $("#dDrafts").textContent = nd ? `${nd} draft${nd > 1 ? "s" : ""}` : "Drafts";
   const high = (S.findings || []).filter(f => f.severity === "high").length, total = (S.findings || []).length;
   $("#dSec").textContent = high ? `${high} security alert${high > 1 ? "s" : ""}` : total ? `${total} security notes` : "Security clear";
   $("#dSecDot").style.background = high ? "var(--alert)" : "var(--sentinel)";

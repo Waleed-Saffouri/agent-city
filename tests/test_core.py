@@ -103,3 +103,10 @@ def test_greenhouse_parsing_and_location_filter():
     kept = [j["title"] for j in jobs if location_ok(j["locations"])]
     assert kept == ["2027 Data Science Intern"]       # Hong Kong and Dubai dropped
     assert location_ok(["Austin, TX"]) and location_ok(["London, UK"]) and not location_ok(["Toronto, ON, Canada"])
+
+
+def test_writer_catches_invented_numbers():
+    from agents.writer import unsupported_numbers
+    cv = "Merged 855 months of data; value beat growth by 0.44% per month; 48-page report"
+    assert unsupported_numbers("I analyzed 855 months and wrote a 48-page report", cv) == []
+    assert unsupported_numbers("I grew revenue 40% across 12 clients", cv) == ["12", "40%"]

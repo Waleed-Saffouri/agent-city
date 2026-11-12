@@ -16,6 +16,7 @@ I was applying to jobs by hand and wanted a system that does the searching and c
 |---|---|---|---|
 | HQ | **Manager** | Reads the message board and every agent's results, writes the morning brief, answers questions in chat, flags crashed agents | Yes (mid-tier model) |
 | Scout | **Job Scout** | Pulls fresh postings from the SimplifyJobs lists plus 27 finance/fintech company boards (Greenhouse), filters and scores them, learns from my approve/skip clicks, and queues the best ones | Rules + one batched AI re-rank per day |
+| Writer | **Writer** | When I approve a job, drafts a cover letter and "what to lead with" CV notes using only facts from my CV; every number in the draft is checked against the CV and anything unsupported is flagged | Yes (mid-tier model) |
 | Sentinel | **Sentinel** | Blocks commits that contain secrets (pre-commit hook), scans files *and git history* with gitleaks, finds vulnerable packages with pip-audit and risky code with Bandit, and reports agents that break their permissions or receive prompt-injection attempts | No (free) |
 
 Agents communicate through a shared **message board**. Everything they do is written to an **activity log**, and the city animates in real time: windows light up while an agent works, messages travel between buildings, and HQ flashes red when Sentinel finds a high-risk issue.
@@ -45,6 +46,9 @@ Agents communicate through a shared **message board**. Everything they do is wri
 - **Prompt-injection defense.** Job postings are untrusted. Suspicious ones are held back from the AI, the rest are cleaned and fenced in `<untrusted>` tags, and the AI brain runs with no tools at all (`--tools ""`), so even a successful injection can't run commands or read files.
 - **Secrets never stored.** Sentinel records *where* a secret is and what kind, never its value.
 
+- **Self-healing.** If a worker crashes, the Manager restarts it once before reporting it in the brief.
+- **Phone alerts.** The morning brief can go to Telegram; the bot token lives in `.env`, never in code or logs.
+
 ## Results so far
 - First run: the Scout checked **2,245** active postings and queued **37–41** matches after filtering out defense contractors, senior roles, off-topic fields and companies I've already applied to.
 - Sentinel, tested on a deliberately broken project, caught an API key that had been committed and then deleted (still in git history), a committed `.env`, 3 outdated packages with 19 known vulnerabilities, `shell=True` and disabled TLS checks. The pre-commit hook blocked a commit containing a GitHub token, with and without gitleaks installed.
@@ -52,8 +56,7 @@ Agents communicate through a shared **message board**. Everything they do is wri
 - A full morning run (all three agents) used about **5,000 tokens**.
 
 ## Limitations and next steps
-- Approving a job doesn't yet generate the tailored CV and cover letter (next).
-- Phone alerts through Telegram.
+- The Writer drafts a cover letter and CV notes; it doesn't yet render a fully re-ordered CV PDF.
 - Inbox, School and Trading Tower buildings are placeholders.
 - Runs on my laptop; a GitHub Actions version would let it run while the laptop is closed.
 
@@ -61,6 +64,12 @@ Agents communicate through a shared **message board**. Everything they do is wri
 ```bash
 git clone https://github.com/Waleed-Saffouri/agent-city.git
 cd agent-city
+cp profile/cv.example.md profile/cv.md   # then put your real CV in it (git ignores this file)
+cp .env.example .env                     # optional: Telegram phone alerts
+./start.sh                               # sets everything up the first time and opens the city
+```
+Or step by step:
+```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python run.py morning          # run all agents once
