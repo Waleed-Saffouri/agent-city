@@ -38,6 +38,7 @@ class Manager(Agent):
             "errors": db.rows("SELECT agent FROM agent_state WHERE status='error'"),
             "tracker": tracker_stats(),
             "tokens": db.tokens_today(),
+            "todos": __import__("agents.planner", fromlist=["Planner"]).Planner().due_summary(),
             "drafts_ready": db.rows("SELECT COUNT(*) n FROM drafts WHERE ts > ?", (since,))[0]["n"],
             "security": {r["severity"]: r["n"] for r in db.rows(
                 "SELECT severity, COUNT(*) n FROM findings WHERE status='open' GROUP BY severity")},
@@ -55,7 +56,7 @@ class Manager(Agent):
         prompt = ("You are the manager of Waleed's personal AI agent city. Write a short, friendly "
                   "morning brief (under 170 words, bullet points) from this data. He has two goals: a Spring 2027 "
                   "internship and a full-time job after May 2027, so list the best of each separately (with pay "
-                  f"when known). Highlight what needs his approval first.\n\nDATA: {g}")
+                  f"when known). Put overdue and due-today to-dos at the very top. Highlight what needs his approval.\n\nDATA: {g}")
         brief = self.think(prompt) or self.template_brief(g)
         db.execute("INSERT INTO briefs(ts, text) VALUES (?,?)", (time.time(), brief))
         self.send("all", "Morning brief is ready.")

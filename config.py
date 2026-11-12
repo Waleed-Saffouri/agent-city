@@ -107,6 +107,7 @@ PERMISSIONS = {
                  "ai": ["think"]},
     "sentinel": {"network": [], "ai": []},   # scanners run locally; Sentinel never needs AI
     "writer":   {"network": ["boards-api.greenhouse.io"], "ai": ["think"]},
+    "planner":  {"network": ["api.telegram.org"], "ai": ["think"]},
 }
 
 # ---- Writer ----

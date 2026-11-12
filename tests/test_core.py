@@ -152,3 +152,17 @@ def test_ignored_env_not_reported(tmp_path, monkeypatch):
     from agents.sentinel import Sentinel
     Sentinel().scan_secrets(repo)
     assert not db.rows("SELECT * FROM findings WHERE location LIKE '.env%'")
+
+
+def test_planner_dates_and_rules():
+    from datetime import date
+    from agents.planner import parse_due, rule_split, clean_items
+    thu = date(2026, 11, 12)
+    assert parse_due("do it before friday", thu) == "2026-11-13"
+    assert parse_due("ibm interview by the 19th", thu) == "2026-11-19"
+    assert parse_due("tomorrow", thu) == "2026-11-13"
+    assert parse_due("nov 30 deadline", thu) == "2026-11-30"
+    assert parse_due("someday", thu) is None
+    items = rule_split("fill the ibm form before friday. also email demetrius\nidea: trading tower")
+    assert [i["kind"] for i in items] == ["task", "task", "idea"] and items[0]["project"] == "IBM"
+    assert clean_items([{"title": "x", "due": "not a date"}, {"title": ""}])[0]["due"] is None

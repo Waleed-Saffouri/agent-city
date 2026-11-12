@@ -13,7 +13,7 @@
 :root{
   --ink:#1b2333; --ink-2:#4a5568; --ink-3:#8a94a6;
   --paper:#f7f8fa; --paper-2:#eceff4; --rule:#dde2ea;
-  --hq:#3d6fe0; --scout:#2fa58c; --sentinel:#e8913a; --writer:#8b5cf6; --alert:#d9434b; --ok:#2f9e6b;
+  --hq:#3d6fe0; --scout:#2fa58c; --sentinel:#e8913a; --writer:#8b5cf6; --planner:#c9962b; --alert:#d9434b; --ok:#2f9e6b;
   --world:#1e2a44;
   --r-sm:6px; --r-lg:14px;
   font-family:"Familjen Grotesk", system-ui, sans-serif;
@@ -109,6 +109,18 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rende
 .tools{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
 .tools span{font-size:12px;border:1px solid var(--rule);border-radius:5px;padding:2px 7px;color:var(--ink-2)}
 .empty{color:var(--ink-2);font-size:14px;line-height:1.5;padding:8px 0}
+textarea{width:100%;border:1px solid var(--rule);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px;resize:vertical;background:#fff}
+.dumpbar{display:flex;align-items:center;gap:10px;margin:8px 0 6px}
+.small-note{font-size:12px;color:var(--ink-3);flex:1}
+.dumpbar button{border:0;background:var(--planner);color:#fff;border-radius:10px;padding:8px 14px;font-weight:600}
+.dumpbar button:disabled{opacity:.6}
+.pb h3 .n{color:var(--ink-3);font-weight:500}
+.pb h3.late{color:var(--alert)}
+.task{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--rule)}
+.task input{margin-top:3px;width:17px;height:17px;accent-color:var(--planner)}
+.task .ttl{font-size:15px}
+.task.done .ttl{text-decoration:line-through;color:var(--ink-3)}
+.task .x{border:0;background:none;color:var(--ink-3);font-size:18px;line-height:1;padding:0 4px}
 .log div{font-size:13px;padding:6px 0;border-top:1px solid var(--rule);line-height:1.4}
 .log div:first-child{border-top:0}
 .who{font-weight:600}
@@ -141,6 +153,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rende
 
 <nav class="dock" aria-label="Open a panel">
   <button data-open="manager"><span class="dot" style="background:var(--hq)"></span>Morning brief</button>
+  <button data-open="planner"><span class="dot" id="dPlanDot" style="background:var(--planner)"></span><span id="dPlan">To-dos</span></button>
   <button data-open="scout"><span class="dot" style="background:var(--scout)"></span><span class="count" id="dJobs">0</span> jobs to review</button>
   <button data-open="writer"><span class="dot" style="background:var(--writer)"></span><span id="dDrafts">Drafts</span></button>
   <button data-open="sentinel"><span class="dot" id="dSecDot" style="background:var(--sentinel)"></span><span id="dSec">Security</span></button>
@@ -168,12 +181,13 @@ const AGENTS = {
   manager:  { name:"HQ",       title:"Manager",   color:"#3d6fe0", tile:[5,1], size:2, h:118, sign:"HQ" },
   scout:    { name:"Scout",    title:"Job Scout", color:"#2fa58c", tile:[1,2], size:2, h:62,  sign:"SCOUT" },
   sentinel: { name:"Sentinel", title:"Sentinel",  color:"#e8913a", tile:[5,8], size:2, h:84,  sign:"SENTINEL" },
+  planner:  { name:"Planner",  title:"Planner",   color:"#c9962b", tile:[8,1], size:2, h:70,  sign:"PLANNER" },
   writer:   { name:"Writer",   title:"Writer",    color:"#8b5cf6", tile:[9,8], size:2, h:52,  sign:"WRITER" },
 };
 const LOTS = {
   inbox:  { tile:[1,8], size:2, sign:"INBOX",  text:"Inbox Watcher will read recruiter replies and assessment emails, and tell HQ when something needs you." },
-  trader: { tile:[8,1], size:2, sign:"TRADER", text:"Trading Tower will run your paper-trading bot and grade it against the S&P 500 every Friday." },
-  school: { tile:[2,10], size:2, sign:"SCHOOL", text:"School will watch Canvas for deadlines and new grades." },
+  trader: { tile:[10,10], size:2, sign:"TRADER", text:"Trading Tower will run your paper-trading bot and grade it against the S&P 500 every Friday." },
+  school: { tile:[7,10], size:2, sign:"SCHOOL", text:"School will watch Canvas for deadlines and new grades." },
 };
 const N = 12, TW = 64, TH = 32;
 const cvs = $("#city"), g = cvs.getContext("2d");
@@ -304,7 +318,7 @@ function sign(text, at, bg, note){
 }
 
 /* couriers carry each new message along the roads */
-const DOOR = { manager:[4.5,2.5], scout:[4.5,3.5], sentinel:[6,6.5], writer:[10,6.5] };
+const DOOR = { manager:[4.5,2.5], scout:[4.5,3.5], sentinel:[6,6.5], writer:[10,6.5], planner:[9,6.5] };
 const JUNCTION = [4.5, 6.5];   // where the two roads cross; every courier passes through it
 function spawnCouriers(){
   (S?.messages || []).slice().reverse().forEach(m => {
@@ -393,6 +407,33 @@ const VIEWS = {
       body: `<div class="tabs" role="tablist">${tabs.map(([k, label]) => `<button role="tab" aria-selected="${scoutTab === k}" onclick="scoutTab='${k}';render(true)">${label} <b>${count(k)}</b></button>`).join("")}</div>
         ${r.checked ? `<p class="empty" style="padding-top:0">Last run checked ${r.checked.toLocaleString()} postings. Approve the ones worth applying to, and the Writer drafts a cover letter.</p>` : ""}${list}` };
   },
+  planner(){
+    const T = (S.tasks || []), today = S.today;
+    const open = T.filter(t => t.status === "open"), done = T.filter(t => t.status === "done");
+    const weekEnd = new Date(Date.parse(today) + 7*864e5).toISOString().slice(0,10);
+    const groups = [
+      ["Overdue", open.filter(t => t.kind !== "idea" && t.due && t.due < today)],
+      ["Today", open.filter(t => t.kind !== "idea" && t.due === today)],
+      ["This week", open.filter(t => t.kind !== "idea" && t.due > today && t.due <= weekEnd)],
+      ["Later", open.filter(t => t.kind !== "idea" && t.due > weekEnd)],
+      ["No date yet", open.filter(t => t.kind !== "idea" && !t.due)],
+      ["Ideas", open.filter(t => t.kind === "idea")],
+      ["Done today", done],
+    ];
+    const fmt = d => d ? new Date(d + "T12:00").toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) : "";
+    const row = t => `<div class="task ${t.status}">
+        <input type="checkbox" ${t.status === "done" ? "checked" : ""} aria-label="Mark done" onchange="taskAct(${t.id}, this.checked ? 'done' : 'undo')">
+        <div class="meta"><span class="ttl">${esc(t.title)}</span>
+          <div class="sub">${[t.due ? fmt(t.due) + (t.due_time ? " at " + t.due_time : "") : "", t.project, t.priority === "high" ? "important" : ""].filter(Boolean).map(esc).join(" · ")}</div></div>
+        <button class="x" title="Remove" aria-label="Remove" onclick="taskAct(${t.id}, 'delete')">×</button></div>`;
+    const lists = groups.filter(([, items]) => items.length).map(([name, items]) =>
+      `<h3 class="${name === "Overdue" ? "late" : ""}">${name} <span class="n">${items.length}</span></h3>${items.map(row).join("")}`).join("");
+    return { title:"Planner", role:"Dump your thoughts in any order. It sorts them into to-dos with dates and reminds you.", color:"var(--planner)", tag:"PLN",
+      status: statusLine("planner"),
+      body: `<textarea id="dump" rows="4" placeholder="Type anything, like: ibm form before friday, practice round friday night, email demetrius when he replies, idea: trading tower…" aria-label="Brain dump"></textarea>
+        <div class="dumpbar"><span class="small-note" id="dumpNote">Dates like "friday" or "the 19th" are understood.</span><button id="sort">Sort it</button></div>
+        ${lists || `<p class="empty">Nothing on your list. Dump whatever's on your mind above.</p>`}` };
+  },
   writer(){
     const D = S.drafts || [], W = S.approved_waiting || [];
     const waiting = W.length ? `<p class="empty" style="padding-top:0">Writing now: ${W.map(w => esc(w.company)).join(", ")}</p>` : "";
@@ -422,6 +463,9 @@ function render(force){
   $("#tok").textContent = `${Math.round(S.tokens.used/1000)}k / ${Math.round(S.tokens.budget/1000)}k`;
   $("#tokfill").style.width = Math.min(100, 100*S.tokens.used/S.tokens.budget) + "%";
   $("#dJobs").textContent = S.counts.pending || 0;
+  const due = (S.tasks || []).filter(t => t.status === "open" && t.kind !== "idea" && t.due && t.due <= S.today).length;
+  $("#dPlan").textContent = due ? `${due} due today` : "To-dos";
+  $("#dPlanDot").style.background = due ? "var(--alert)" : "var(--planner)";
   const nd = (S.drafts || []).length; $("#dDrafts").textContent = nd ? `${nd} draft${nd > 1 ? "s" : ""}` : "Drafts";
   const high = (S.findings || []).filter(f => f.severity === "high").length, total = (S.findings || []).length;
   $("#dSec").textContent = high ? `${high} security alert${high > 1 ? "s" : ""}` : total ? `${total} security notes` : "Security clear";
@@ -431,18 +475,25 @@ function render(force){
   $("#run").textContent = $("#run").disabled ? "Agents working…" : "Run morning routine";
   if (!openId) return;
   // don't redraw the panel while you're typing in it
-  if (!force && document.activeElement && document.activeElement.id === "q") return;
+  if (!force && document.activeElement && ["q", "dump"].includes(document.activeElement.id)) return;
   const v = VIEWS[openId] ? VIEWS[openId]() : lotView(openId);
   $("#pTitle").textContent = v.title; $("#pRole").textContent = v.role;
   $("#pBadge").textContent = v.tag; $("#pBadge").style.background = v.color;
   $("#pStatus").innerHTML = v.status; $("#pStatus").style.display = v.status ? "" : "none";
   const keep = $("#pBody").scrollTop; $("#pBody").innerHTML = v.body; $("#pBody").scrollTop = force ? 0 : keep;
+  const sortBtn = $("#sort"); if (sortBtn){ sortBtn.onclick = dump;
+    $("#dump").onkeydown = e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) dump(); }; }
   const ask = $("#ask"); if (ask){ ask.onclick = chat; $("#q").onkeydown = e => { if (e.key === "Enter") chat(); }; }
 }
 
 async function refresh(){ try { S = await (await fetch("/api/state")).json(); spawnCouriers(); render(false); } catch (e) { $("#ticker").innerHTML = "<div>Can't reach the city server. Is it running?</div>"; } }
 async function run(name){ await fetch(`/api/run/${name}`, { method:"POST" }); setTimeout(refresh, 400); }
 async function act(id, action){ await fetch(`/api/jobs/${id}/${action}`, { method:"POST" }); refresh(); }
+async function taskAct(id, action){ await fetch(`/api/tasks/${id}/${action}`, { method:"POST" }); refresh(); }
+async function dump(){ const box = $("#dump"), text = box.value.trim(); if (!text) return;
+  $("#sort").disabled = true; $("#dumpNote").textContent = "Sorting…";
+  await fetch("/api/notes", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ text }) });
+  box.value = ""; setTimeout(() => { refresh(); }, 1500); }
 async function dismiss(id){ await fetch(`/api/findings/${id}/dismiss`, { method:"POST" }); refresh(); }
 async function chat(){ const q = $("#q"), text = q.value.trim(); if (!text) return;
   $("#answer").textContent = "Thinking…"; q.value = "";

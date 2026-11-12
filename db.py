@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS agent_state (   -- lets the city light up working bui
 CREATE TABLE IF NOT EXISTS token_usage (
   id INTEGER PRIMARY KEY, ts REAL, agent TEXT, model TEXT, tokens INTEGER
 );
+CREATE TABLE IF NOT EXISTS notes (          -- your brain dumps, exactly as you typed them
+  id INTEGER PRIMARY KEY, ts REAL, text TEXT, processed INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS tasks (          -- what the Planner pulled out of them
+  id INTEGER PRIMARY KEY, ts REAL, title TEXT, kind TEXT DEFAULT 'task', due TEXT, due_time TEXT,
+  priority TEXT DEFAULT 'normal', project TEXT DEFAULT '', status TEXT DEFAULT 'open',
+  note_id INTEGER, reminded INTEGER DEFAULT 0, done_ts REAL
+);
 CREATE TABLE IF NOT EXISTS drafts (         -- what the Writer produced for approved jobs
   job_id TEXT PRIMARY KEY, ts REAL, folder TEXT, status TEXT, note TEXT
 );
@@ -67,8 +75,9 @@ def rows(sql, args=()):
 
 
 def execute(sql, args=()):
+    """Run a write. Returns the new row's id for INSERTs."""
     with conn() as c:
-        c.execute(sql, args)
+        return c.execute(sql, args).lastrowid
 
 
 def log(agent, kind, text):

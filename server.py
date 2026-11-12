@@ -4,6 +4,7 @@
 """
 import json
 import threading
+import time
 
 from pathlib import Path
 
@@ -16,9 +17,10 @@ from agents.job_scout import JobScout
 from agents.manager import Manager
 from agents.sentinel import Sentinel
 from agents.writer import Writer
+from agents.planner import Planner
 from config import DAILY_TOKEN_BUDGET, ROOT
 
-AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "manager": Manager}
+AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "planner": Planner, "manager": Manager}
 app = FastAPI(title="Agent City")
 db.init()
 
@@ -54,6 +56,9 @@ def state():
                              ORDER BY d.ts DESC LIMIT 20"""),
         "approved_waiting": db.rows("""SELECT j.id, j.company, j.title FROM jobs j LEFT JOIN drafts d ON d.job_id = j.id
                                        WHERE j.status='approved' AND d.job_id IS NULL"""),
+        "tasks": db.rows("""SELECT * FROM tasks WHERE status='open' OR (status='done' AND done_ts > ?)
+                            ORDER BY (due IS NULL), due, priority='normal', ts""", (time.time() - 86400,)),
+        "today": __import__("datetime").date.today().isoformat(),
         "findings": db.rows("""SELECT * FROM findings WHERE status='open' ORDER BY
                                CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, ts DESC LIMIT 30"""),
     }
@@ -63,7 +68,7 @@ def state():
 def run_agent(name: str):
     if name == "morning":
         def go():
-            JobScout().run(); Sentinel().run(); Writer().run(); Manager().run()
+            JobScout().run(); Sentinel().run(); Writer().run(); Planner().run(); Manager().run()
     else:
         go = AGENTS[name]().run
     threading.Thread(target=go, daemon=True).start()
@@ -95,6 +100,32 @@ def draft_letter(job_id: str):
 def dismiss(fid: str):
     db.execute("UPDATE findings SET status='dismissed' WHERE id=?", (fid,))
     db.log("you", "decision", "Dismissed a security finding.")
+    return {"ok": True}
+
+
+class Note(BaseModel):
+    text: str
+
+
+@app.post("/api/notes")
+def add_note(note: Note):
+    text = note.text.strip()[:5000]
+    if not text:
+        raise HTTPException(400, "Write something first.")
+    threading.Thread(target=Planner().capture, args=(text,), daemon=True).start()
+    return {"ok": True}
+
+
+@app.post("/api/tasks/{task_id}/{action}")
+def task_action(task_id: int, action: str):
+    if action == "done":
+        db.execute("UPDATE tasks SET status='done', done_ts=? WHERE id=?", (time.time(), task_id))
+    elif action == "undo":
+        db.execute("UPDATE tasks SET status='open', done_ts=NULL WHERE id=?", (task_id,))
+    elif action == "delete":
+        db.execute("UPDATE tasks SET status='deleted' WHERE id=?", (task_id,))
+    else:
+        raise HTTPException(400, "Unknown action.")
     return {"ok": True}
 
 
