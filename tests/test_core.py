@@ -92,3 +92,14 @@ def test_history_secret_found(tmp_path, monkeypatch):
     Sentinel().scan_secrets(repo)
     rows = db.rows("SELECT detail FROM findings WHERE check_name='Leaked secret'")
     assert any("git history" in r["detail"] for r in rows)
+
+
+def test_greenhouse_parsing_and_location_filter():
+    import json as _j
+    from agents.job_scout import from_greenhouse, location_ok
+    data = _j.loads((Path(__file__).parent / "fixtures" / "greenhouse_sample.json").read_text())
+    jobs = from_greenhouse("schonfeld", data)
+    assert jobs[1]["company_name"] == "Schonfeld" and jobs[1]["date_posted"] > 0
+    kept = [j["title"] for j in jobs if location_ok(j["locations"])]
+    assert kept == ["2027 Data Science Intern"]       # Hong Kong and Dubai dropped
+    assert location_ok(["Austin, TX"]) and location_ok(["London, UK"]) and not location_ok(["Toronto, ON, Canada"])

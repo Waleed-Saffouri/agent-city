@@ -32,6 +32,15 @@ JOB_SOURCES = {
     "new_grad": "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json",
     "internships": "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json",
 }
+# Company job boards on Greenhouse (public, no login). Mostly finance, trading and fintech firms that
+# the SimplifyJobs lists under-cover. Add a company by its Greenhouse board name
+# (the word after greenhouse.io/ in its job links).
+GREENHOUSE_COMPANIES = [
+    "point72", "schonfeld", "drweng", "imc", "janestreet", "jumptrading", "towerresearchcapital",
+    "akunacapital", "pdtpartners", "virtu", "clearstreet", "stripe", "brex", "affirm", "coinbase",
+    "carta", "chime", "sofi", "robinhood", "betterment", "mercury", "vestwell", "figma", "datadog",
+    "mongodb", "airbnb", "asana",
+]
 MAX_AGE_DAYS = 21
 
 TITLE_KEYWORDS = {  # keyword -> points
@@ -78,7 +87,7 @@ SENTINEL_TARGETS = [p for p in os.environ.get("SENTINEL_TARGETS", str(Path.home(
 # both of which check this list and log anything blocked. Sentinel reports blocked attempts.
 PERMISSIONS = {
     "manager":  {"network": [], "ai": ["think"]},
-    "scout":    {"network": ["raw.githubusercontent.com"], "ai": ["think"]},
+    "scout":    {"network": ["raw.githubusercontent.com", "boards-api.greenhouse.io"], "ai": ["think"]},
     "sentinel": {"network": [], "ai": []},   # scanners run locally; Sentinel never needs AI
     "writer":   {"network": [], "ai": ["think"]},
 }

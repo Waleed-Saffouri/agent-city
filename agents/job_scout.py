@@ -8,13 +8,13 @@ Three layers, cheapest first:
 import json
 import re
 import time
-import urllib.request
 from collections import Counter
+from datetime import datetime
 
 import db
 from agents import guard
 from agents.base import Agent
-from config import (AVOID_COMPANIES, GOOD_CATEGORIES, INTERNSHIP_PENALTY, JOB_SOURCES,
+from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, INTERNSHIP_PENALTY, JOB_SOURCES,
                     MAX_AGE_DAYS, OFF_TOPIC, PREFERRED_LOCATIONS, SKIP_TITLE, TITLE_KEYWORDS)
 
 PROFILE = ("Waleed: Computational & Data Sciences B.S. (GMU, May 2027) with a finance minor. "
@@ -25,6 +25,34 @@ PROFILE = ("Waleed: Computational & Data Sciences B.S. (GMU, May 2027) with a fi
 
 STOP = {"and", "the", "of", "a", "-", "&", "intern", "analyst", "data", "i", "ii", "1", "2", "2027",
         "new", "grad", "associate", "junior", "entry", "level", "–", "summer", "full", "time"}
+
+
+US_STATES = ("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM "
+             "NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC").split()
+
+
+def location_ok(locs):
+    """True if any location is in the US, remote, or London (where you said you'd go)."""
+    text = " | ".join(locs)
+    if re.search(r"(?i)united states|\busa?\b|\bus-|remote|london|new york|nyc", text):
+        return True
+    return any(re.search(rf",\s*{st}\b", text) for st in US_STATES)
+
+
+def from_greenhouse(slug, data):
+    """Turn a Greenhouse board into the same shape as SimplifyJobs listings."""
+    out = []
+    for j in data.get("jobs", []):
+        posted = j.get("first_published") or j.get("updated_at")
+        try:
+            ts = datetime.fromisoformat(posted).timestamp() if posted else 0
+        except ValueError:
+            ts = 0
+        out.append({"id": f"gh-{slug}-{j['id']}", "company_name": (j.get("company_name") or slug).strip(),
+                    "title": j.get("title", ""), "locations": [(j.get("location") or {}).get("name", "")],
+                    "url": j.get("absolute_url", ""), "date_posted": ts, "active": True,
+                    "is_visible": True, "category": "", "degrees": []})
+    return out
 
 
 def words(title):
@@ -160,15 +188,37 @@ class JobScout(Agent):
         applied = already_applied()
         new, checked = [], 0
         cutoff = time.time() - MAX_AGE_DAYS * 86400
+        feeds = []
         for source, url in JOB_SOURCES.items():
             try:
-                listings = self.fetch(url)
+                feeds.append((source, self.fetch(url)))
             except Exception as e:
                 self.log(f"Couldn't read {source} list: {e}", "error")
-                continue
+        failed = []
+        for slug in GREENHOUSE_COMPANIES:
+            try:
+                jobs = from_greenhouse(slug, self.fetch(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+                                                        timeout=20))
+                feeds.append(("company_boards", jobs))
+            except Exception:
+                failed.append(slug)
+        ok = len(GREENHOUSE_COMPANIES) - len(failed)
+        self.log(f"Read {len(feeds) - ok} job lists and {ok}/{len(GREENHOUSE_COMPANIES)} company boards."
+                 + (f" Couldn't reach: {', '.join(failed[:5])}{'…' if len(failed) > 5 else ''}." if failed else ""),
+                 "warn" if failed else "info")
+        seen_titles = set()
+        for source, listings in feeds:
             for j in listings:
                 if not j.get("active") or not j.get("is_visible", True) or j.get("date_posted", 0) < cutoff:
                     continue
+                if not location_ok(j.get("locations", [])):
+                    continue
+                same = (j["company_name"].lower().strip(), j.get("title", "").lower().strip())
+                if same in seen_titles:  # the same job listed in two places
+                    continue
+                seen_titles.add(same)
+                src = "internships" if (source == "company_boards" and
+                                        "intern" in j.get("title", "").lower()) else source
                 checked += 1
                 jid = str(j.get("id"))
                 if jid in known:
@@ -176,12 +226,12 @@ class JobScout(Agent):
                 if any(a and (a in j["company_name"].lower() or j["company_name"].lower() in a)
                        for a in applied):
                     continue  # you've already applied there
-                score, reasons = score_job(j, source, liked, disliked)
+                score, reasons = score_job(j, src, liked, disliked)
                 if score < 45:
                     continue
                 new.append((jid, time.time(), j["company_name"], j["title"],
                             "; ".join(j.get("locations", []))[:200], j.get("url", ""),
-                            source, j.get("date_posted", 0), score, json.dumps(reasons)))
+                            src, j.get("date_posted", 0), score, json.dumps(reasons)))
         new = self.ai_rerank(new)
         for row in new:
             db.execute("""INSERT OR IGNORE INTO jobs(id, ts, company, title, locations, url, source,
