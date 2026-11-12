@@ -99,6 +99,9 @@ class Manager(Agent):
             lines.append("• Security: all clear.")
         for e in g["errors"]:
             lines.append(f"• ⚠️ {e['agent']} crashed and needs a look.")
+        if db.get("ai_problem") == "login":
+            lines.append("• ⚠️ The AI is offline because the Claude login expired. Fix: open Terminal, type "
+                         "claude, then /login. (This brief was written with simple rules.)")
         lines.append(f"• Tokens used today: {g['tokens']:,}")
         return "\n".join(lines)
 

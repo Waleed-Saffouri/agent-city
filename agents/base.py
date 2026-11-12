@@ -2,9 +2,11 @@
 and (optionally) a connection to Claude."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -76,6 +78,13 @@ class Agent:
             urllib.request.urlopen(req, timeout=20).close()  # nosec B310 - fixed https URL
             db.execute("INSERT INTO phone_log(ts, agent) VALUES (?,?)", (time.time(), self.name))
             return True
+        except urllib.error.HTTPError as e:
+            try:  # Telegram explains what's wrong (e.g. "chat not found"); the token is never logged
+                why = json.loads(e.read().decode()).get("description", "")
+            except Exception:
+                why = ""
+            self.log(f"Phone alert failed: Telegram said {e.code} {why}".strip(), "warn")
+            return False
         except Exception as e:
             self.log(f"Phone alert failed: {type(e).__name__}", "warn")  # never log the token
             return False
@@ -170,7 +179,18 @@ class Agent:
                 ["claude", "-p", prompt, "--model", alias, "--output-format", "json", "--tools", "",
                  "--strict-mcp-config", "--system-prompt", BRAIN_SYSTEM],
                 capture_output=True, text=True, timeout=300)
-            data = json.loads(out.stdout)
+            try:
+                data = json.loads(out.stdout)
+            except ValueError:
+                data = {"is_error": True, "result": (out.stderr or out.stdout or "no output").strip()}
+            text = str(data.get("result") or "")
+            if out.returncode != 0 or data.get("is_error") or re.search(
+                    r"(?i)failed to authenticate|oauth|please run /login|not logged in|invalid api key", text[:200]):
+                problem = "login expired" if re.search(r"(?i)auth|login|oauth", text) else "error"
+                self.log(f"AI is offline ({problem}): {text[:120]}", "error")
+                db.put("ai_problem", "login" if problem == "login expired" else "error")
+                return None
+            db.put("ai_problem", "")
             u = data.get("usage", {})
             used = sum(u.get(k, 0) or 0 for k in ("input_tokens", "output_tokens"))
             db.execute("INSERT INTO token_usage(ts, agent, model, tokens) VALUES (?,?,?,?)",
