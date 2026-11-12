@@ -188,3 +188,9 @@ def test_reminder_fires_once(tmp_path, monkeypatch):
     assert p.remind_due(datetime(2026, 11, 15, 17, 59)) == 0
     assert p.remind_due(datetime(2026, 11, 15, 18, 0)) == 1
     assert p.remind_due(datetime(2026, 11, 15, 18, 1)) == 0
+
+
+def test_spring_internship_must_be_commutable():
+    from agents.job_scout import commutable
+    assert commutable(["Reston, VA"]) and commutable(["Remote in USA"]) and commutable(["Washington, DC"])
+    assert not commutable(["NYC"]) and not commutable(["Remote in Canada"]) and not commutable(["Austin, TX"])

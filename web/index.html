@@ -384,7 +384,7 @@ const VIEWS = {
     return { title:"Manager", role:"Reads every agent's report, writes your morning brief, and answers questions.", color:"var(--hq)", tag:"HQ",
       status: statusLine("manager"),
       body: `<h3>This morning</h3><div class="brief">${S.brief ? md(S.brief) : `<p class="empty">No brief yet. Press Run morning routine and the Manager will write one after the other agents finish.</p>`}</div>
-        <div class="chat"><input id="q" placeholder="Ask about your jobs, security, or the city" aria-label="Ask the Manager"><button id="ask">Ask</button></div>
+        <div class="chat"><input id="q" placeholder="Ask a question, or: remind me to… / run the scout" aria-label="Ask the Manager"><button id="ask">Ask</button></div>
         <div class="answer" id="answer">${esc(lastAnswer)}</div>
         <h3>The team</h3><div class="roster">${roster}</div>` };
   },

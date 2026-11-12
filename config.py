@@ -86,12 +86,15 @@ SPRING_BONUS = 10
 
 # Where you'd move. The best location in a posting counts. Anywhere not listed costs points,
 # so jobs only in small towns sink to the bottom or drop out.
+# Places you can commute to from GMU (Fairfax). Spring internships MUST be here or fully remote,
+# because you're still in class until May.
+DMV_PLACES = ["washington, dc", "washington dc", ", dc", "district of columbia", "arlington", "mclean",
+              "reston", "tysons", "fairfax", "alexandria", "herndon", "vienna, va", "chantilly",
+              "falls church", "ashburn", "sterling, va", "manassas", "leesburg", "centreville",
+              "springfield, va", "annandale", "bethesda", "rockville", "silver spring", "gaithersburg",
+              "college park", "dmv"]
 LOCATION_TIERS = {
-    25: ["new york", "nyc", "manhattan", "brooklyn", "jersey city", "hoboken",            # NYC
-         "washington, dc", "washington dc", ", dc", "district of columbia", "arlington", "mclean",  # DMV
-         "reston", "tysons", "fairfax", "alexandria", "herndon", "vienna, va", "chantilly",
-         "bethesda", "rockville", "silver spring", "gaithersburg", "college park", "falls church",
-         "ashburn", "sterling, va", "manassas", "leesburg", "dmv"],
+    25: ["new york", "nyc", "manhattan", "brooklyn", "jersey city", "hoboken"] + DMV_PLACES,
     15: ["austin", "dallas", "houston", "plano", "irving", "fort worth", "frisco",             # Texas
          "raleigh", "durham", "charlotte", "chapel hill", "research triangle", "cary, nc",    # NC
          "remote", "london", "chicago", "boston",

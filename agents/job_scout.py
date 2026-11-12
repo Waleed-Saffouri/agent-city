@@ -17,7 +17,7 @@ import db
 from agents import guard
 from agents.base import Agent
 from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, INTERNSHIP_TERMS, JOB_SOURCES, SPRING_BONUS,
-                    LOCATION_TIERS, OTHER_LOCATION_POINTS,
+                    LOCATION_TIERS, OTHER_LOCATION_POINTS, DMV_PLACES,
                     MAX_AGE_DAYS, OFF_TOPIC, SKIP_TITLE, TITLE_KEYWORDS)
 
 PROFILE = ("Waleed: Computational & Data Sciences B.S. (GMU, May 2027) with a finance minor. "
@@ -130,6 +130,17 @@ def location_points(locs):
         if best is None or pts > best:
             best, where = pts, loc.split(",")[0].strip()
     return (best if best is not None else OTHER_LOCATION_POINTS), where
+
+
+def commutable(locs):
+    """Spring internships: somewhere you can get to from GMU, or fully remote."""
+    for loc in locs or []:
+        low = loc.lower()
+        if any(k in low for k in DMV_PLACES):
+            return True
+        if "remote" in low and not re.search(r"(?i)remote in (canada|uk|india)|hybrid", low):
+            return True
+    return False
 
 
 def fit_label(score):
@@ -327,6 +338,8 @@ class JobScout(Agent):
                 track = track_of(j, src)
                 if track is None:
                     continue   # summer/fall internship: not one of your goals
+                if track == "internship" and not commutable(j.get("locations", [])):
+                    continue   # you're in class at GMU until May: DMV or fully remote only
                 checked += 1
                 jid = str(j.get("id"))
                 if jid in known:

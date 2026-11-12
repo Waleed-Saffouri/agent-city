@@ -102,8 +102,27 @@ class Manager(Agent):
         return "\n".join(lines)
 
     def chat(self, question):
+        # HQ can act, not just answer: to-dos go to the Planner, "run X" starts an agent.
+        q = question.strip()
+        if re.match(r"(?i)(remind me|todo|to-do|to do:|add (a )?(task|to-?do)|don'?t (let me )?forget|note:)", q):
+            from agents.planner import Planner
+            n = Planner().capture(q)
+            return f"Added {n} item{'s' if n != 1 else ''} to your to-dos. Open the Planner to see them."
+        m = re.match(r"(?i)(?:run|start|check)\s+(?:the\s+)?(scout|sentinel|writer|planner|jobs|security)\b", q)
+        if m:
+            import threading
+            from agents.job_scout import JobScout
+            from agents.planner import Planner
+            from agents.sentinel import Sentinel
+            from agents.writer import Writer
+            name = {"jobs": "scout", "security": "sentinel"}.get(m[1].lower(), m[1].lower())
+            cls = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "planner": Planner}[name]
+            threading.Thread(target=cls().run, daemon=True).start()
+            return f"Started the {name}. Watch its building light up; results land in its panel."
         g = self.gather()
-        answer = self.think(f"You manage Waleed's AI agent city. Answer briefly and plainly.\n"
+        answer = self.think(f"You manage Waleed's AI agent city. Answer briefly and plainly from the data. "
+                            "If he asks for something only a code change can do, say so in one line and "
+                            "suggest he ask Claude to build it.\n"
                             f"City data: {g}\n\nWaleed asks: {question}")
         if answer:
             return answer
