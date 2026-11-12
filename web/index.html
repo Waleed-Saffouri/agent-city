@@ -4,208 +4,442 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent City</title>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=Silkscreen&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0e1020; --panel:#171a30; --line:#2a2f52; --text:#e8e9f3; --muted:#9aa0c3;
-          --accent:#ffcf5c; --good:#5ee6a8; --bad:#ff6b7a; --blue:#6aa8ff; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter, system-ui, sans-serif; }
-  header { display:flex; align-items:center; gap:16px; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-  h1 { font:16px 'Press Start 2P', monospace; margin:0; color:var(--accent); letter-spacing:1px; }
-  .budget { flex:1; min-width:200px; max-width:360px; }
-  .bar { height:10px; background:#232744; border-radius:6px; overflow:hidden; }
-  .bar > div { height:100%; background:linear-gradient(90deg,var(--good),var(--accent)); width:0; }
-  .small { color:var(--muted); font-size:12px; }
-  button { background:var(--accent); color:#1a1300; border:0; border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer; }
-  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
-  button:disabled { opacity:.5; cursor:wait; }
-  main { display:grid; align-items:start; grid-template-columns: minmax(0,1.35fr) minmax(320px,1fr); gap:16px; padding:16px 20px; }
-  @media (max-width: 900px) { main { grid-template-columns:1fr; padding:12px 16px; } }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
-  .card h2 { font:11px 'Press Start 2P', monospace; color:var(--blue); margin:0 0 12px; }
-  canvas { width:100%; height:auto; display:block; image-rendering:pixelated; border-radius:8px; background:#0b0d1a; cursor:pointer; }
-  #info { margin-top:10px; min-height:44px; }
-  .brief { white-space:pre-wrap; }
-  #jobs { max-height:520px; overflow:auto; }
-  #sec { max-height:260px; overflow:auto; }
-  .find { border-top:1px solid var(--line); padding:8px 0; }
-  .find:first-child { border-top:0; }
-  .sev { font:9px 'Press Start 2P', monospace; padding:4px 6px; border-radius:5px; margin-right:6px; }
-  .sev.high { background:#ff6b7a33; color:var(--bad); } .sev.medium { background:#ffcf5c33; color:var(--accent); }
-  .sev.low { background:#6aa8ff33; color:var(--blue); }
-  .job { border-top:1px solid var(--line); padding:10px 0; display:flex; gap:10px; align-items:flex-start; }
-  .job:first-child { border-top:0; }
-  .score { font:10px 'Press Start 2P', monospace; background:#26304f; color:var(--good); padding:6px; border-radius:6px; min-width:42px; text-align:center; }
-  .job .meta { flex:1; min-width:0; }
-  .job a { color:var(--text); font-weight:600; text-decoration:none; }
-  .job a:hover { text-decoration:underline; }
-  .actions { display:flex; gap:6px; }
-  .actions button { padding:6px 9px; font-size:12px; }
-  .log { font-size:12px; max-height:220px; overflow:auto; }
-  .log div { padding:3px 0; border-bottom:1px dashed #23284a; }
-  .tag { color:var(--accent); font-weight:600; }
-  .chat { display:flex; gap:8px; margin-top:10px; }
-  .chat input { flex:1; background:#0f1226; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; }
-  .answer { white-space:pre-wrap; margin-top:10px; color:#dfe3ff; }
-  .stack { display:grid; gap:16px; }
+/* Design notes
+   The city is a game world; the panels are paper. Dusk-slate world, cool white sheets, one accent
+   per agent so you always know who is talking. Pixel type only on in-world signs. */
+:root{
+  --ink:#1b2333; --ink-2:#4a5568; --ink-3:#8a94a6;
+  --paper:#f7f8fa; --paper-2:#eceff4; --rule:#dde2ea;
+  --hq:#3d6fe0; --scout:#2fa58c; --sentinel:#e8913a; --alert:#d9434b; --ok:#2f9e6b;
+  --world:#1e2a44;
+  --r-sm:6px; --r-lg:14px;
+  font-family:"Familjen Grotesk", system-ui, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--world);color:var(--ink);overflow:hidden}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--sentinel);outline-offset:2px}
+
+/* top bar floats over the world */
+.bar{position:fixed;inset:12px 12px auto 12px;display:flex;align-items:center;gap:14px;z-index:5;
+  padding:10px 12px 10px 16px;background:rgba(247,248,250,.94);border-radius:var(--r-lg);
+  box-shadow:0 6px 24px rgba(10,16,30,.25);flex-wrap:wrap}
+.brand{font-family:Silkscreen, monospace;font-size:15px;letter-spacing:.5px;margin-right:4px}
+.clock{color:var(--ink-2);font-size:14px}
+.meter{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:13px;color:var(--ink-2)}
+.meter .track{width:120px;height:8px;border-radius:4px;background:#d6dce6;overflow:hidden}
+.meter .fill{height:100%;width:0;background:var(--hq);transition:width .6s}
+.run{background:var(--ink);color:#fff;border:0;border-radius:10px;padding:9px 14px;font-weight:600}
+.run:disabled{opacity:.55;cursor:progress}
+
+canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rendering:pixelated;touch-action:manipulation}
+
+/* bottom dock: the three things that need you */
+.dock{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;z-index:5;
+  padding:6px;background:rgba(247,248,250,.94);border-radius:16px;box-shadow:0 6px 24px rgba(10,16,30,.25);
+  max-width:calc(100vw - 32px);overflow-x:auto}
+.dock button{display:flex;align-items:center;gap:8px;border:0;background:transparent;border-radius:11px;
+  padding:9px 12px;white-space:nowrap;color:var(--ink);font-weight:500}
+.dock button:hover,.dock button[aria-pressed=true]{background:var(--paper-2)}
+.dot{width:9px;height:9px;border-radius:50%}
+.count{font-weight:700}
+.ticker{position:fixed;left:16px;bottom:84px;z-index:4;max-width:min(460px,calc(100vw - 32px));
+  color:#eef2f8;font-size:13px;line-height:1.35;pointer-events:none;background:rgba(27,35,51,.72);
+  border-radius:10px;padding:8px 12px}
+.ticker:empty{display:none}
+.ticker div{opacity:.85;margin-top:3px}
+.ticker div:first-child{opacity:1}
+
+/* side panel */
+.panel{position:fixed;top:12px;right:12px;bottom:12px;width:min(440px,calc(100vw - 24px));z-index:6;
+  background:var(--paper);border-radius:var(--r-lg);box-shadow:0 12px 48px rgba(10,16,30,.4);
+  display:flex;flex-direction:column;transform:translateX(calc(100% + 24px));transition:transform .28s ease}
+.panel.open{transform:none}
+.ph{padding:18px 20px 14px;border-bottom:1px solid var(--rule);display:flex;gap:14px;align-items:flex-start}
+.badge{width:44px;height:44px;border-radius:10px;flex:none;display:grid;place-items:center;
+  font-family:Silkscreen, monospace;color:#fff;font-size:12px}
+.ph h2{margin:0;font-size:21px;line-height:1.2}
+.ph p{margin:3px 0 0;color:var(--ink-2);font-size:14px;line-height:1.4}
+.close{margin-left:auto;border:0;background:var(--paper-2);border-radius:8px;width:32px;height:32px;font-size:18px;color:var(--ink-2)}
+.status{display:flex;gap:16px;padding:10px 20px;font-size:13px;color:var(--ink-2);border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.status b{color:var(--ink)}
+.pb{padding:16px 20px 20px;overflow:auto;flex:1}
+.pb h3{font-size:15px;margin:18px 0 8px}
+.pb h3:first-child{margin-top:0}
+.brief{font-size:15px;line-height:1.55}
+.brief p{margin:0 0 6px}
+.brief ul{margin:4px 0 10px;padding-left:18px}
+.chat{display:flex;gap:8px;margin-top:10px}
+.chat input{flex:1;border:1px solid var(--rule);border-radius:10px;padding:10px 12px;font:inherit;background:#fff}
+.chat button{border:0;background:var(--hq);color:#fff;border-radius:10px;padding:0 14px;font-weight:600}
+.answer{margin-top:10px;padding:12px 14px;background:#fff;border:1px solid var(--rule);border-radius:10px;font-size:14px;line-height:1.5;white-space:pre-wrap}
+.answer:empty{display:none}
+
+.item{padding:12px 0;border-top:1px solid var(--rule);display:flex;gap:12px}
+.item:first-child{border-top:0}
+.fit{flex:none;width:44px;text-align:center}
+.fit strong{display:block;font-size:20px;line-height:1}
+.fit small{font-size:11px;color:var(--ink-3)}
+.meta{flex:1;min-width:0}
+.meta a{color:var(--ink);font-weight:600;text-decoration:none;line-height:1.3}
+.meta a:hover{text-decoration:underline}
+.meta .sub{font-size:13px;color:var(--ink-2);margin-top:2px}
+.why{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.why span{font-size:12px;background:var(--paper-2);color:var(--ink-2);padding:2px 7px;border-radius:5px}
+.why span.ai{background:#e6eefc;color:#2c56b8}
+.acts{display:flex;flex-direction:column;gap:6px}
+.acts button{border:1px solid var(--rule);background:#fff;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600}
+.acts .yes{background:var(--scout);border-color:var(--scout);color:#fff}
+
+.sev{flex:none;width:64px;font-size:12px;font-weight:700;padding-top:2px}
+.sev.high{color:var(--alert)} .sev.medium{color:#b8701f} .sev.low{color:var(--ink-3)}
+.fix{font-size:13px;color:var(--ink);margin-top:4px}
+.fix::before{content:"Fix: ";font-weight:600}
+.fix a{color:var(--hq)}
+.meta{overflow-wrap:anywhere}
+.tools{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.tools span{font-size:12px;border:1px solid var(--rule);border-radius:5px;padding:2px 7px;color:var(--ink-2)}
+.empty{color:var(--ink-2);font-size:14px;line-height:1.5;padding:8px 0}
+.log div{font-size:13px;padding:6px 0;border-top:1px solid var(--rule);line-height:1.4}
+.log div:first-child{border-top:0}
+.who{font-weight:600}
+.when{color:var(--ink-3);font-size:12px;margin-right:6px}
+.roster{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.roster div{border:1px solid var(--rule);border-radius:10px;padding:10px;font-size:13px;background:#fff}
+.roster b{display:block;font-size:14px}
+
+@media (max-width:640px){
+  .bar{inset:8px 8px auto 8px;gap:8px}
+  .meter .track{width:70px}
+  .clock{display:none}
+  .panel{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:72vh;transform:translateY(calc(100% + 24px))}
+  .ticker{display:none}
+}
+@media (prefers-reduced-motion:reduce){.panel{transition:none}}
 </style>
 </head>
 <body>
-<header>
-  <h1>AGENT CITY</h1>
-  <div class="budget">
-    <div class="small">Token budget today <span id="tok"></span></div>
-    <div class="bar"><div id="tokbar"></div></div>
-  </div>
-  <button id="runMorning">▶ Run morning routine</button>
-</header>
-<main>
-  <section class="stack">
-    <div class="card">
-      <h2>THE CITY</h2>
-      <canvas id="city" width="640" height="360"></canvas>
-      <div id="info" class="small">Click a building to see what that agent does.</div>
-    </div>
-    <div class="card">
-      <h2>WORK LOG</h2>
-      <div id="log" class="log"></div>
-    </div>
-  </section>
-  <section class="stack">
-    <div class="card">
-      <h2>MORNING BRIEF</h2>
-      <div id="brief" class="brief small">No brief yet. Run the morning routine.</div>
-      <div class="chat"><input id="q" placeholder="Ask the manager…"><button id="ask" class="ghost">Ask</button></div>
-      <div id="answer" class="answer small"></div>
-    </div>
-    <div class="card">
-      <h2>SECURITY <span id="seccount"></span></h2>
-      <div id="sec" class="small">Sentinel hasn't scanned yet.</div>
-    </div>
-    <div class="card">
-      <h2>WAITING ON YOU <span id="pcount"></span></h2>
-      <div id="jobs" class="small">Nothing yet.</div>
-    </div>
-  </section>
-</main>
+<canvas id="city" aria-label="Agent City: click a building to open that agent"></canvas>
+
+<div class="bar">
+  <span class="brand">Agent City</span>
+  <span class="clock" id="clock"></span>
+  <span class="meter" title="AI tokens used today">AI budget <span class="track"><span class="fill" id="tokfill"></span></span><span id="tok"></span></span>
+  <button class="run" id="run">Run morning routine</button>
+</div>
+
+<div class="ticker" id="ticker" aria-live="polite"></div>
+
+<nav class="dock" aria-label="Open a panel">
+  <button data-open="manager"><span class="dot" style="background:var(--hq)"></span>Morning brief</button>
+  <button data-open="scout"><span class="dot" style="background:var(--scout)"></span><span class="count" id="dJobs">0</span> jobs to review</button>
+  <button data-open="sentinel"><span class="dot" id="dSecDot" style="background:var(--sentinel)"></span><span id="dSec">Security</span></button>
+  <button data-open="log"><span class="dot" style="background:var(--ink-3)"></span>Work log</button>
+</nav>
+
+<aside class="panel" id="panel" aria-live="polite">
+  <div class="ph"><div class="badge" id="pBadge"></div><div><h2 id="pTitle"></h2><p id="pRole"></p></div>
+    <button class="close" id="pClose" aria-label="Close panel">×</button></div>
+  <div class="status" id="pStatus"></div>
+  <div class="pb" id="pBody"></div>
+</aside>
+
 <script>
 const $ = s => document.querySelector(s);
-let STATE = null, tick = 0;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = ts => { const s = Math.max(0, Math.round(Date.now()/1000 - ts));
+  return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s/60)}m ago` : s < 86400 ? `${Math.round(s/3600)}h ago` : `${Math.round(s/86400)}d ago`; };
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Buildings in the city. Future agents show as construction lots.
-const B = [
-  { id:"manager", label:"HQ",     x:270, y:110, w:110, h:150, color:"#6aa8ff" },
-  { id:"scout",   label:"SCOUT",  x:80,  y:160, w:100, h:100, color:"#5ee6a8" },
-  { id:"sentinel",label:"SENTINEL",x:440, y:140, w:90, h:120, color:"#ff9f43" },
-  { id:"inbox",   label:"INBOX",  x:545, y:200, w:50,  h:60,  color:"#ffcf5c", soon:true },
-  { id:"school",  label:"SCHOOL", x:30,  y:290, w:90,  h:0,   color:"#c58cff", soon:true },
-  { id:"trader",  label:"TRADER", x:600, y:120, w:36,  h:140, color:"#ff6b7a", soon:true },
-];
-const SOON = { inbox:"Inbox Watcher: reads recruiter replies & assessments (coming soon)",
-               trader:"Trading Tower: your paper-trading bot vs. the S&P 500 (coming soon)",
-               school:"School: Canvas deadlines & grades (coming soon)" };
+let S = null, openId = null, lastAnswer = "";
 
-function drawCity() {
-  const c = $("#city"), g = c.getContext("2d");
-  g.clearRect(0,0,c.width,c.height);
-  // sky + stars
-  g.fillStyle = "#0b0d1a"; g.fillRect(0,0,c.width,c.height);
-  for (let i=0;i<40;i++){ g.fillStyle = (i+tick)%17===0 ? "#ffffff" : "#3a3f6b"; g.fillRect((i*97)%640,(i*53)%140,2,2); }
-  // ground + road
-  g.fillStyle = "#1a1d36"; g.fillRect(0,260,640,100);
-  g.fillStyle = "#2a2f52"; g.fillRect(0,300,640,18);
-  for (let x=(tick*4)%40; x<640; x+=40){ g.fillStyle="#ffcf5c55"; g.fillRect(x,308,18,2); }
-
-  const status = {}; (STATE?.agents||[]).forEach(a => status[a.name]=a.status);
-  B.forEach(b => {
-    if (b.soon) {               // construction lot
-      g.strokeStyle = "#3a3f6b"; g.setLineDash([4,4]);
-      g.strokeRect(b.x, 260-(b.h||40), b.w, b.h||40); g.setLineDash([]);
-      g.fillStyle="#4a5080"; g.font="8px 'Press Start 2P'"; g.fillText(b.label, b.x+4, 255-(b.h||40)/2+4);
-      return;
-    }
-    const working = status[b.id]==="working";
-    const alarm = b.id==="manager" && (STATE?.findings||[]).some(f=>f.severity==="high");
-    const err = status[b.id]==="error" || (alarm && tick%10<5);
-    g.fillStyle = "#20244a"; g.fillRect(b.x, b.y, b.w, b.h);
-    g.fillStyle = b.color; g.fillRect(b.x, b.y, b.w, 8);
-    // windows: light up and flicker when the agent is working
-    for (let wy=b.y+18; wy<b.y+b.h-14; wy+=18) for (let wx=b.x+10; wx<b.x+b.w-12; wx+=18) {
-      const on = working ? ((wx+wy+tick*7)%5!==0) : ((wx*3+wy)%7===0);
-      g.fillStyle = err ? "#ff6b7a" : on ? "#ffe9a3" : "#2c3160";
-      g.fillRect(wx, wy, 10, 10);
-    }
-    g.fillStyle="#e8e9f3"; g.font="9px 'Press Start 2P'";
-    g.fillText(b.label, b.x+(b.w-b.label.length*9)/2, b.y-8);
-    if (working) { g.fillStyle="#5ee6a8"; g.fillText("WORKING", b.x+(b.w-63)/2, b.y-22); }
-    else if (alarm) { g.fillStyle="#ff6b7a"; g.fillText("ALERT", b.x+(b.w-45)/2, b.y-22); }
-  });
-
-  // message lines: recent messages travel between buildings
-  const recent = (STATE?.messages||[]).filter(m => Date.now()/1000 - m.ts < 120);
-  recent.forEach((m,i) => {
-    const from = B.find(b=>b.id===m.sender), to = B.find(b=>b.id===(m.recipient==="all"?"scout":m.recipient));
-    if (!from || !to || from===to) return;
-    const ax=from.x+from.w/2, ay=from.y+20, bx=to.x+to.w/2, by=to.y+20;
-    g.strokeStyle="#ffcf5c88"; g.beginPath(); g.moveTo(ax,ay); g.lineTo(bx,by); g.stroke();
-    const t = ((tick*3 + i*20) % 60)/60;
-    g.fillStyle="#ffcf5c"; g.fillRect(ax+(bx-ax)*t-3, ay+(by-ay)*t-3, 6, 6);
-  });
-}
-
-$("#city").addEventListener("click", e => {
-  const r = e.target.getBoundingClientRect(), sx = 640/r.width, x=(e.clientX-r.left)*sx, y=(e.clientY-r.top)*sx;
-  const b = B.find(b => x>=b.x && x<=b.x+b.w && y>=(b.soon?220:b.y) && y<=262);
-  if (!b) return;
-  if (b.soon) { $("#info").textContent = SOON[b.id]; return; }
-  const a = STATE.agents.find(a=>a.name===b.id);
-  $("#info").innerHTML = `<b>${b.label}</b> · ${a.role}<br>Status: ${a.status} · Model tier: ${a.tier}` +
-    (a.last_result ? ` · Last run: ${JSON.stringify(a.last_result)}` : "") +
-    ` <button class="ghost" style="margin-left:8px;padding:4px 8px" onclick="run('${b.id}')">Run now</button>`;
-});
-
-function ago(ts){ const s=Math.round(Date.now()/1000-ts); return s<60?`${s}s`:s<3600?`${Math.round(s/60)}m`:`${Math.round(s/3600)}h`; }
-function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-
-function render() {
-  const s = STATE;
-  $("#tok").textContent = `${s.tokens.used.toLocaleString()} / ${s.tokens.budget.toLocaleString()}`;
-  $("#tokbar").style.width = Math.min(100, 100*s.tokens.used/s.tokens.budget) + "%";
-  if (s.brief) $("#brief").innerHTML = esc(s.brief).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^\s*[-•] /gm, "• ");
-  $("#pcount").textContent = s.jobs.length ? `(${s.counts.pending||s.jobs.length})` : "";
-  $("#jobs").innerHTML = s.jobs.length ? s.jobs.map(j => `
-    <div class="job">
-      <div class="score">${j.score}</div>
-      <div class="meta"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.company)} — ${esc(j.title)}</a>
-        <div class="small">${esc(j.locations)}</div>
-        <div class="small">${j.reasons.map(esc).join(" · ")}</div></div>
-      <div class="actions"><button onclick="act('${j.id}','approve')">✓</button>
-        <button class="ghost" onclick="act('${j.id}','skip')">✕</button></div>
-    </div>`).join("") : "Nothing waiting. 🎉";
-  const F = s.findings||[];
-  $("#seccount").textContent = F.length ? `(${F.length} open)` : "";
-  const scanned = s.agents.find(a=>a.name==="sentinel")?.last_result;
-  $("#sec").innerHTML = F.length ? F.map(f => `<div class="find"><span class="sev ${f.severity}">${f.severity.toUpperCase()}</span>
-      <b>${esc(f.check_name)}</b> · ${esc(f.target)} <span class="small">${esc(f.location)}</span>
-      <div class="small">${esc(f.detail)}</div><div class="small">Fix: ${esc(f.fix)}</div></div>`).join("")
-    : (scanned ? "All clear. No open security issues. 🛡️" : "Sentinel hasn't scanned yet.");
-  $("#log").innerHTML = s.activity.map(a => `<div><span class="small">${ago(a.ts)}</span> <span class="tag">${esc(a.agent)}</span> ${esc(a.text)}</div>`).join("");
-}
-
-async function refresh(){ try { STATE = await (await fetch("/api/state")).json(); render(); } catch(e){} }
-async function run(name){ $("#runMorning").disabled = true; await fetch(`/api/run/${name}`, {method:"POST"}); setTimeout(()=>$("#runMorning").disabled=false, 4000); refresh(); }
-async function act(id, action){ await fetch(`/api/jobs/${id}/${action}`, {method:"POST"}); refresh(); }
-$("#runMorning").onclick = () => run("morning");
-$("#ask").onclick = async () => {
-  const text = $("#q").value.trim(); if (!text) return;
-  $("#answer").textContent = "…";
-  const r = await (await fetch("/api/chat", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})})).json();
-  $("#answer").textContent = r.answer; $("#q").value=""; refresh();
+/* ---------- the world ---------- */
+const AGENTS = {
+  manager:  { name:"HQ",       title:"Manager",   color:"#3d6fe0", tile:[5,1], size:2, h:118, sign:"HQ" },
+  scout:    { name:"Scout",    title:"Job Scout", color:"#2fa58c", tile:[1,2], size:2, h:62,  sign:"SCOUT" },
+  sentinel: { name:"Sentinel", title:"Sentinel",  color:"#e8913a", tile:[5,8], size:2, h:84,  sign:"SENTINEL" },
 };
-$("#q").addEventListener("keydown", e => { if (e.key==="Enter") $("#ask").click(); });
+const LOTS = {
+  inbox:  { tile:[1,8], size:2, sign:"INBOX",  text:"Inbox Watcher will read recruiter replies and assessment emails, and tell HQ when something needs you." },
+  trader: { tile:[8,1], size:2, sign:"TRADER", text:"Trading Tower will run your paper-trading bot and grade it against the S&P 500 every Friday." },
+  school: { tile:[9,8], size:2, sign:"SCHOOL", text:"School will watch Canvas for deadlines and new grades." },
+};
+const N = 12, TW = 64, TH = 32;
+const cvs = $("#city"), g = cvs.getContext("2d");
+let W = 0, H = 0, DPR = 1, OX = 0, OY = 0, SC = 1;
+const shapes = [];          // hit areas for clicks
+const couriers = [];        // little messengers walking between buildings
+const seenMsgs = new Set();
+let t0 = performance.now();
 
-refresh(); setInterval(refresh, 3000);
-setInterval(() => { tick++; drawCity(); }, 120);
+function resize(){
+  DPR = Math.min(2, devicePixelRatio || 1);
+  W = innerWidth; H = innerHeight;
+  cvs.width = W*DPR; cvs.height = H*DPR;
+  const panelOpen = document.querySelector(".panel.open") && W > 900;
+  const availW = panelOpen ? W - 464 : W;
+  const mapW = N*TW, mapH = N*TH + 160;
+  SC = Math.max(.55, Math.min(1.6, Math.min(availW/(mapW+40), (H-150)/mapH)));
+  OX = panelOpen ? (W - Math.min(440, W-24) - 12)/2 : W/2; OY = Math.max(90, (H - mapH*SC)/2 + 120*SC);
+}
+addEventListener("resize", resize); resize();
+
+const iso = (i, j) => [OX + (i - j)*TW/2*SC, OY + (i + j)*TH/2*SC];
+function poly(pts, fill, stroke){ g.beginPath(); pts.forEach(([x,y],k) => k ? g.lineTo(x,y) : g.moveTo(x,y)); g.closePath();
+  if (fill){ g.fillStyle = fill; g.fill(); } if (stroke){ g.strokeStyle = stroke; g.lineWidth = 1; g.stroke(); } }
+const lerp = (a, b, u) => [a[0] + (b[0]-a[0])*u, a[1] + (b[1]-a[1])*u];
+const up = (p, h) => [p[0], p[1] - h*SC];
+function shade(hex, f){ const n = parseInt(hex.slice(1), 16), r = n>>16, gg = n>>8&255, b = n&255;
+  const m = v => Math.round(Math.max(0, Math.min(255, f < 0 ? v*(1+f) : v + (255-v)*f)));
+  return `rgb(${m(r)},${m(gg)},${m(b)})`; }
+
+function sky(){
+  const hr = new Date().getHours() + new Date().getMinutes()/60;
+  // night → dawn → day → dusk, matching your real clock
+  const keys = [[0,"#121a2e","#1e2a44"],[6,"#2a3556","#f2b48a"],[8,"#5d86c4","#cfe0f2"],[17,"#4f74b3","#e8c6a0"],[19.5,"#2a2f55","#b86f6f"],[21,"#121a2e","#1e2a44"],[24,"#121a2e","#1e2a44"]];
+  let a = keys[0], b = keys[1];
+  for (let k = 0; k < keys.length-1; k++) if (hr >= keys[k][0] && hr < keys[k+1][0]) { a = keys[k]; b = keys[k+1]; }
+  const u = (hr - a[0])/(b[0]-a[0]);
+  const mix = (c1, c2) => { const p = x => parseInt(x.slice(1),16); const A = p(c1), B = p(c2);
+    const ch = s => Math.round((A>>s&255) + ((B>>s&255) - (A>>s&255))*u); return `rgb(${ch(16)},${ch(8)},${ch(0)})`; };
+  const grad = g.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, mix(a[1], b[1])); grad.addColorStop(1, mix(a[2], b[2]));
+  g.fillStyle = grad; g.fillRect(0, 0, W, H);
+  if (hr < 6 || hr > 20) for (let k = 0; k < 60; k++){ g.fillStyle = `rgba(255,255,255,${.25 + (k%3)*.2})`; g.fillRect((k*137)%W, (k*71)%(H*.45), 2, 2); }
+  return hr < 6.5 || hr > 19;  // night → windows glow more
+}
+
+function ground(){
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++){
+    const road = i === 4 || j === 6;
+    const c = road ? "#4a5162" : ((i+j)%2 ? "#3e5a48" : "#41604c");
+    poly([iso(i,j), iso(i+1,j), iso(i+1,j+1), iso(i,j+1)], c, road ? "#565e70" : "#3a5444");
+    if (road && (i+j)%2 === 0){ const c0 = lerp(iso(i,j), iso(i+1,j+1), .5); g.fillStyle = "#c8b46a88"; g.fillRect(c0[0]-3*SC, c0[1]-1, 6*SC, 2); }
+  }
+  // trees on a few grass tiles
+  [[0,0],[11,0],[0,11],[11,11],[2,0],[8,11],[11,4],[0,5],[3,10],[7,5],[10,5],[2,5]].forEach(([i,j]) => {
+    const [x,y] = lerp(iso(i,j), iso(i+1,j+1), .5);
+    g.fillStyle = "#5b3d2a"; g.fillRect(x-1.5*SC, y-10*SC, 3*SC, 10*SC);
+    g.fillStyle = "#2f6b4a"; g.beginPath(); g.arc(x, y-16*SC, 9*SC, 0, 7); g.fill();
+    g.fillStyle = "#3d8259"; g.beginPath(); g.arc(x-3*SC, y-19*SC, 5*SC, 0, 7); g.fill();
+  });
+}
+
+function building(id, b, t, night){
+  const [i0, j0] = b.tile, s = b.size;
+  const A = iso(i0, j0), B = iso(i0+s, j0), C = iso(i0+s, j0+s), D = iso(i0, j0+s);
+  const st = (S?.agents || []).find(a => a.name === id) || {};
+  const working = st.status === "working", crashed = st.status === "error";
+  const alarm = id === "manager" && (S?.findings || []).some(f => f.severity === "high");
+  const h = b.h;
+  const left = [D, C, up(C,h), up(D,h)], right = [C, B, up(B,h), up(C,h)], top = [up(A,h), up(B,h), up(C,h), up(D,h)];
+  poly(left, shade(b.color, -.35)); poly(right, shade(b.color, -.55)); poly(top, shade(b.color, .15));
+  // windows on both faces
+  const rows = Math.max(2, Math.floor(h/18)), cols = 4;
+  [[D, C, -.35], [C, B, -.55]].forEach(([P, Q, f], face) => {
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+      const u0 = (c + .25)/cols, u1 = (c + .75)/cols, v0 = (r + .3)/rows*h, v1 = (r + .75)/rows*h;
+      const seed = (r*7 + c*13 + face*5 + i0) % 11;
+      const lit = working ? ((seed + Math.floor(t*6)) % 4 !== 0) : (night ? seed < 6 : seed < 2);
+      const col = crashed ? "#d9434b" : lit ? (night ? "#ffe2a0" : "#fff4cf") : shade(b.color, f - .25);
+      poly([up(lerp(P,Q,u0), v0), up(lerp(P,Q,u1), v0), up(lerp(P,Q,u1), v1), up(lerp(P,Q,u0), v1)], col);
+    }
+  });
+  // roof details
+  const roof = lerp(up(A,h), up(C,h), .5);
+  if (id === "manager"){ // antenna + beacon
+    g.fillStyle = "#cfd6e4"; g.fillRect(roof[0]-1, roof[1]-26*SC, 2, 26*SC);
+    const on = alarm ? Math.floor(t*3) % 2 === 0 : working;
+    g.fillStyle = alarm ? (on ? "#ff5a62" : "#6b2a2e") : on ? "#7ff0c4" : "#9aa6bd";
+    g.beginPath(); g.arc(roof[0], roof[1]-28*SC, 4*SC, 0, 7); g.fill();
+    if (alarm && on){ g.fillStyle = "rgba(255,90,98,.18)"; g.beginPath(); g.arc(roof[0], roof[1]-28*SC, 22*SC, 0, 7); g.fill(); }
+  }
+  if (id === "sentinel"){ // searchlight sweeps while scanning
+    g.fillStyle = "#cfd6e4"; g.fillRect(roof[0]-4*SC, roof[1]-8*SC, 8*SC, 8*SC);
+    if (working && !reduce){ const a = Math.sin(t*1.6)*.9 - Math.PI/2;
+      g.fillStyle = "rgba(255,230,160,.22)"; g.beginPath(); g.moveTo(roof[0], roof[1]-8*SC);
+      g.arc(roof[0], roof[1]-8*SC, 170*SC, a-.16, a+.16); g.closePath(); g.fill(); }
+  }
+  if (id === "scout"){ // radar dish turns while searching
+    const a = working && !reduce ? t*3 : .6;
+    g.strokeStyle = "#e6ecf5"; g.lineWidth = 2*SC; g.beginPath();
+    g.ellipse(roof[0], roof[1]-10*SC, 10*SC*Math.abs(Math.cos(a)) + 2, 6*SC, 0, 0, 7); g.stroke();
+    g.fillStyle = "#e6ecf5"; g.fillRect(roof[0]-1, roof[1]-10*SC, 2, 10*SC);
+  }
+  sign(b.sign, lerp(up(D,h), up(C,h), .5), working ? b.color : "#1b2333", working ? "WORKING" : crashed ? "NEEDS A LOOK" : alarm ? "ALERT" : "");
+  shapes.push({ id, pts: [D, C, B, up(B,h), up(A,h), up(D,h)] });
+}
+
+function lot(id, b){
+  const [i0, j0] = b.tile, s = b.size;
+  const A = iso(i0, j0), B = iso(i0+s, j0), C = iso(i0+s, j0+s), D = iso(i0, j0+s);
+  poly([A,B,C,D], "#59614f");
+  g.setLineDash([5,5]); poly([A,B,C,D], null, "#c9b46a"); g.setLineDash([]);
+  // a little crane
+  const m = lerp(A, C, .5);
+  g.fillStyle = "#e0a93a"; g.fillRect(m[0]-1.5*SC, m[1]-46*SC, 3*SC, 46*SC); g.fillRect(m[0]-2*SC, m[1]-46*SC, 26*SC, 3*SC);
+  sign(b.sign, lerp(D, C, .5), "#59614f", "SOON");
+  shapes.push({ id, pts: [A,B,C,D].map(p => [p[0], p[1]]) .concat([[m[0], m[1]-50*SC]]) });
+}
+
+function sign(text, at, bg, note){
+  g.font = `${Math.round(10*SC+2)}px Silkscreen, monospace`;
+  const w = g.measureText(text).width + 12, x = at[0] - w/2, y = at[1] - 26*SC;
+  g.fillStyle = bg; g.fillRect(x, y, w, 15*SC + 4);
+  g.fillStyle = "#fff"; g.fillText(text, x + 6, y + 11*SC + 2);
+  if (note){ g.font = `${Math.round(8*SC+2)}px Silkscreen, monospace`; const nw = g.measureText(note).width + 10;
+    g.fillStyle = note === "ALERT" || note === "NEEDS A LOOK" ? "#d9434b" : note === "SOON" ? "#c9a24a" : "#1b2333";
+    g.fillRect(at[0]-nw/2, y - 15*SC, nw, 12*SC + 2); g.fillStyle = "#fff"; g.fillText(note, at[0]-nw/2 + 5, y - 5*SC); }
+}
+
+/* couriers carry each new message along the roads */
+const DOOR = { manager:[4.5,2.5], scout:[4.5,3.5], sentinel:[6,6.5] };
+function spawnCouriers(){
+  (S?.messages || []).slice().reverse().forEach(m => {
+    if (seenMsgs.has(m.id)) return; seenMsgs.add(m.id);
+    if (Date.now()/1000 - m.ts > 90) return;           // only animate fresh messages
+    const to = m.recipient === "all" ? Object.keys(AGENTS).filter(k => k !== m.sender) : [m.recipient];
+    to.forEach(r => { if (DOOR[m.sender] && DOOR[r]) couriers.push({ from: DOOR[m.sender], to: DOOR[r], born: performance.now(), color: AGENTS[m.sender].color }); });
+  });
+}
+function drawCouriers(now){
+  for (let k = couriers.length - 1; k >= 0; k--){
+    const c = couriers[k], u = (now - c.born)/5000;
+    if (u >= 1){ couriers.splice(k, 1); continue; }
+    // walk along the road the sender is on, then turn onto the receiver's road
+    const mid = [c.from[0], c.to[1]];
+    const p = u < .5 ? lerp(c.from, mid, u*2) : lerp(mid, c.to, (u-.5)*2);
+    const [x, y] = iso(p[0], p[1]); const bob = reduce ? 0 : Math.abs(Math.sin(now/90))*2;
+    g.fillStyle = "#1b2333"; g.fillRect(x-2*SC, y-12*SC-bob, 4*SC, 9*SC);
+    g.fillStyle = "#f2d2b6"; g.fillRect(x-2*SC, y-16*SC-bob, 4*SC, 4*SC);
+    g.fillStyle = c.color; g.fillRect(x+2*SC, y-11*SC-bob, 6*SC, 4*SC);   // the envelope
+  }
+}
+
+function frame(now){
+  const t = (now - t0)/1000;
+  g.setTransform(DPR,0,0,DPR,0,0);
+  shapes.length = 0;
+  const night = sky(); ground();
+  // painter's order: back to front
+  const all = [...Object.entries(AGENTS).map(([id,b]) => ({id, b, kind:"b"})), ...Object.entries(LOTS).map(([id,b]) => ({id, b, kind:"l"}))]
+    .sort((p, q) => (p.b.tile[0]+p.b.tile[1]) - (q.b.tile[0]+q.b.tile[1]));
+  all.forEach(x => x.kind === "l" ? lot(x.id, x.b) : building(x.id, x.b, t, night));
+  drawCouriers(now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function inside(pt, pts){ let c = false; for (let a = 0, b = pts.length-1; a < pts.length; b = a++){
+  const [xi, yi] = pts[a], [xj, yj] = pts[b];
+  if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj-xi)*(pt[1]-yi)/(yj-yi) + xi) c = !c; } return c; }
+cvs.addEventListener("click", e => { const hit = shapes.slice().reverse().find(s => inside([e.clientX, e.clientY], s.pts)); if (hit) open(hit.id); });
+cvs.addEventListener("mousemove", e => { cvs.style.cursor = shapes.some(s => inside([e.clientX, e.clientY], s.pts)) ? "pointer" : "default"; });
+
+/* ---------- panels ---------- */
+function md(text){  // tiny, safe markdown: bold + bullets + paragraphs
+  const lines = esc(text).split("\n"); let out = "", list = false;
+  for (let l of lines){
+    l = l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+    if (/^\s*[-•]\s+/.test(l)){ if (!list){ out += "<ul>"; list = true; } out += `<li>${l.replace(/^\s*[-•]\s+/, "")}</li>`; }
+    else { if (list){ out += "</ul>"; list = false; } if (l.trim()) out += `<p>${l}</p>`; }
+  }
+  return out + (list ? "</ul>" : "");
+}
+const statusLine = id => { const a = (S.agents || []).find(x => x.name === id) || {};
+  const last = (S.activity || []).find(x => x.agent === id && x.kind === "done");
+  return `<span>Status <b>${a.status === "working" ? "working now" : a.status === "error" ? "needs a look" : "idle"}</b></span>
+          <span>Model <b>${a.tier === "manager" ? "Sonnet" : a.name === "sentinel" ? "none (free)" : "Haiku / local"}</b></span>
+          <span>Last run <b>${last ? ago(last.ts) : "not yet"}</b></span>
+          <button class="acts" style="margin-left:auto;border:0;background:none;color:var(--hq);font-weight:600;padding:0" onclick="run('${id}')">Run now</button>`; };
+
+const VIEWS = {
+  manager(){
+    const roster = (S.agents || []).map(a => `<div><b>${esc(AGENTS[a.name]?.title || a.name)}</b>${a.status === "working" ? "Working now" : a.status === "error" ? "Needs a look" : "Idle"}</div>`).join("");
+    return { title:"Manager", role:"Reads every agent's report, writes your morning brief, and answers questions.", color:"var(--hq)", tag:"HQ",
+      status: statusLine("manager"),
+      body: `<h3>This morning</h3><div class="brief">${S.brief ? md(S.brief) : `<p class="empty">No brief yet. Press Run morning routine and the Manager will write one after the other agents finish.</p>`}</div>
+        <div class="chat"><input id="q" placeholder="Ask about your jobs, security, or the city" aria-label="Ask the Manager"><button id="ask">Ask</button></div>
+        <div class="answer" id="answer">${esc(lastAnswer)}</div>
+        <h3>The team</h3><div class="roster">${roster}</div>` };
+  },
+  scout(){
+    const jobs = S.jobs || [];
+    const list = jobs.length ? jobs.map(j => `<div class="item">
+        <div class="fit"><strong>${j.score}</strong><small>fit</small></div>
+        <div class="meta"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a>
+          <div class="sub">${esc(j.company)} · ${esc((j.locations || "").split(";").slice(0,2).join(";"))}</div>
+          <div class="why">${(j.reasons || []).map(r => `<span class="${r.startsWith("AI:") ? "ai" : ""}">${esc(r.replace(/^AI: /, ""))}</span>`).join("")}</div></div>
+        <div class="acts"><button class="yes" onclick="act('${j.id}','approve')">Approve</button><button onclick="act('${j.id}','skip')">Skip</button></div>
+      </div>`).join("") : `<p class="empty">Nothing waiting. The Scout checks again every morning, or press Run now.</p>`;
+    const r = (S.agents.find(a => a.name === "scout") || {}).last_result || {};
+    return { title:"Job Scout", role:"Reads job lists and 27 company boards each morning, filters them for you, and learns from your choices.", color:"var(--scout)", tag:"SCT",
+      status: statusLine("scout"),
+      body: `${r.checked ? `<p class="empty" style="padding-top:0">Last run checked ${r.checked.toLocaleString()} postings and kept ${r.queued}. Approve the ones worth applying to.</p>` : ""}${list}` };
+  },
+  sentinel(){
+    const F = S.findings || [], r = (S.agents.find(a => a.name === "sentinel") || {}).last_result || {};
+    const tools = (r.tools || []);
+    const list = F.length ? F.map(f => `<div class="item"><div class="sev ${f.severity}">${f.severity === "high" ? "High" : f.severity === "medium" ? "Medium" : "Low"}</div>
+        <div class="meta"><b>${esc(f.check_name)}</b><div class="sub">${esc(f.target)} — ${esc(f.location)}</div>
+          <div class="sub">${esc(f.detail)}</div><div class="fix">${/^See https?:\/\//.test(f.fix) ? `<a href="${esc(f.fix.slice(4))}" target="_blank" rel="noopener">read the guide for this issue</a>` : esc(f.fix)}</div></div>
+        <div class="acts"><button onclick="dismiss('${f.id}')" title="Hide this finding">Dismiss</button></div></div>`).join("")
+      : `<p class="empty">${r.tools ? "No open issues. Your projects are clean." : "Sentinel hasn't scanned yet. Press Run now."}</p>`;
+    return { title:"Sentinel", role:"Blocks leaked keys before they're committed and scans your projects every morning.", color:"var(--sentinel)", tag:"SEC",
+      status: statusLine("sentinel"),
+      body: `${tools.length ? `<div class="tools">${tools.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}${list}` };
+  },
+  log(){
+    return { title:"Work log", role:"Everything the agents did, newest first.", color:"var(--ink-2)", tag:"LOG", status:"",
+      body: `<div class="log">${(S.activity || []).map(a => `<div><span class="when">${ago(a.ts)}</span><span class="who" style="color:${AGENTS[a.agent]?.color || "var(--ink)"}">${esc(AGENTS[a.agent]?.title || a.agent)}</span> ${esc(a.text)}</div>`).join("")}</div>` };
+  },
+};
+function lotView(id){ const l = LOTS[id]; return { title: l.sign[0] + l.sign.slice(1).toLowerCase(), role:"Under construction", color:"#8a7a4a", tag:"…", status:"", body:`<p class="empty">${esc(l.text)}</p>` }; }
+
+function open(id){ openId = id; render(true); $("#panel").classList.add("open"); resize();
+  document.querySelectorAll(".dock button").forEach(b => b.setAttribute("aria-pressed", b.dataset.open === id)); }
+function close(){ openId = null; $("#panel").classList.remove("open"); resize(); document.querySelectorAll(".dock button").forEach(b => b.setAttribute("aria-pressed", false)); }
+$("#pClose").onclick = close; addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+document.querySelectorAll(".dock button").forEach(b => b.onclick = () => openId === b.dataset.open ? close() : open(b.dataset.open));
+
+function render(force){
+  if (!S) return;
+  $("#tok").textContent = `${Math.round(S.tokens.used/1000)}k / ${Math.round(S.tokens.budget/1000)}k`;
+  $("#tokfill").style.width = Math.min(100, 100*S.tokens.used/S.tokens.budget) + "%";
+  $("#dJobs").textContent = S.counts.pending || 0;
+  const high = (S.findings || []).filter(f => f.severity === "high").length, total = (S.findings || []).length;
+  $("#dSec").textContent = high ? `${high} security alert${high > 1 ? "s" : ""}` : total ? `${total} security notes` : "Security clear";
+  $("#dSecDot").style.background = high ? "var(--alert)" : "var(--sentinel)";
+  $("#ticker").innerHTML = (S.activity || []).slice(0, 3).map(a => `<div><b>${esc(AGENTS[a.agent]?.title || (a.agent === "you" ? "You" : a.agent))}</b> ${esc(a.text)}</div>`).join("");
+  $("#run").disabled = (S.agents || []).some(a => a.status === "working");
+  $("#run").textContent = $("#run").disabled ? "Agents working…" : "Run morning routine";
+  if (!openId) return;
+  // don't redraw the panel while you're typing in it
+  if (!force && document.activeElement && document.activeElement.id === "q") return;
+  const v = VIEWS[openId] ? VIEWS[openId]() : lotView(openId);
+  $("#pTitle").textContent = v.title; $("#pRole").textContent = v.role;
+  $("#pBadge").textContent = v.tag; $("#pBadge").style.background = v.color;
+  $("#pStatus").innerHTML = v.status; $("#pStatus").style.display = v.status ? "" : "none";
+  const keep = $("#pBody").scrollTop; $("#pBody").innerHTML = v.body; $("#pBody").scrollTop = force ? 0 : keep;
+  const ask = $("#ask"); if (ask){ ask.onclick = chat; $("#q").onkeydown = e => { if (e.key === "Enter") chat(); }; }
+}
+
+async function refresh(){ try { S = await (await fetch("/api/state")).json(); spawnCouriers(); render(false); } catch (e) { $("#ticker").innerHTML = "<div>Can't reach the city server. Is it running?</div>"; } }
+async function run(name){ await fetch(`/api/run/${name}`, { method:"POST" }); setTimeout(refresh, 400); }
+async function act(id, action){ await fetch(`/api/jobs/${id}/${action}`, { method:"POST" }); refresh(); }
+async function dismiss(id){ await fetch(`/api/findings/${id}/dismiss`, { method:"POST" }); refresh(); }
+async function chat(){ const q = $("#q"), text = q.value.trim(); if (!text) return;
+  $("#answer").textContent = "Thinking…"; q.value = "";
+  const r = await (await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ text }) })).json();
+  lastAnswer = r.answer; $("#answer").textContent = r.answer; refresh(); }
+$("#run").onclick = () => run("morning");
+
+function tickClock(){ const d = new Date(); $("#clock").textContent = d.toLocaleDateString(undefined, { weekday:"long" }) + ", " + d.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }) + " · next routine 7:00"; }
+tickClock(); setInterval(tickClock, 30000);
+refresh(); setInterval(refresh, 2500);
 </script>
 </body>
 </html>
