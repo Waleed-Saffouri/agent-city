@@ -69,7 +69,8 @@ class Manager(Agent):
         from agents.job_scout import JobScout
         from agents.sentinel import Sentinel
         from agents.writer import Writer
-        cls = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer}.get(name)
+        from agents.school import School
+        cls = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": School}.get(name)
         if not cls:
             return False
         try:
@@ -108,15 +109,16 @@ class Manager(Agent):
             from agents.planner import Planner
             n = Planner().capture(q)
             return f"Added {n} item{'s' if n != 1 else ''} to your to-dos. Open the Planner to see them."
-        m = re.match(r"(?i)(?:run|start|check)\s+(?:the\s+)?(scout|sentinel|writer|planner|jobs|security)\b", q)
+        m = re.match(r"(?i)(?:run|start|check)\s+(?:the\s+)?(scout|sentinel|writer|planner|school|canvas|jobs|security)\b", q)
         if m:
             import threading
             from agents.job_scout import JobScout
             from agents.planner import Planner
             from agents.sentinel import Sentinel
             from agents.writer import Writer
-            name = {"jobs": "scout", "security": "sentinel"}.get(m[1].lower(), m[1].lower())
-            cls = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "planner": Planner}[name]
+            from agents.school import School
+            name = {"jobs": "scout", "security": "sentinel", "canvas": "school"}.get(m[1].lower(), m[1].lower())
+            cls = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "planner": Planner, "school": School}[name]
             threading.Thread(target=cls().run, daemon=True).start()
             return f"Started the {name}. Watch its building light up; results land in its panel."
         g = self.gather()

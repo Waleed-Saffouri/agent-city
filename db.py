@@ -35,10 +35,13 @@ CREATE TABLE IF NOT EXISTS notes (          -- your brain dumps, exactly as you 
 CREATE TABLE IF NOT EXISTS tasks (          -- what the Planner pulled out of them
   id INTEGER PRIMARY KEY, ts REAL, title TEXT, kind TEXT DEFAULT 'task', due TEXT, due_time TEXT,
   priority TEXT DEFAULT 'normal', project TEXT DEFAULT '', status TEXT DEFAULT 'open',
-  note_id INTEGER, reminded INTEGER DEFAULT 0, done_ts REAL
+  note_id INTEGER, reminded INTEGER DEFAULT 0, done_ts REAL, source_uid TEXT
 );
 CREATE TABLE IF NOT EXISTS drafts (         -- what the Writer produced for approved jobs
   job_id TEXT PRIMARY KEY, ts REAL, folder TEXT, status TEXT, note TEXT
+);
+CREATE TABLE IF NOT EXISTS kv (             -- small settings the city remembers (e.g. last morning run)
+  k TEXT PRIMARY KEY, v TEXT
 );
 CREATE TABLE IF NOT EXISTS phone_log (      -- every phone alert sent (for the daily limit)
   id INTEGER PRIMARY KEY, ts REAL, agent TEXT
@@ -70,6 +73,8 @@ def init():
             c.execute("ALTER TABLE jobs ADD COLUMN track TEXT DEFAULT 'fulltime'")
         if "salary" not in cols:
             c.execute("ALTER TABLE jobs ADD COLUMN salary TEXT DEFAULT ''")
+        if "source_uid" not in {r[1] for r in c.execute("PRAGMA table_info(tasks)")}:
+            c.execute("ALTER TABLE tasks ADD COLUMN source_uid TEXT")
 
 
 def rows(sql, args=()):
@@ -114,3 +119,12 @@ def add_finding(severity, check, target, location, detail, fix):
                VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET ts=excluded.ts, status='open'""",
             (key, time.time(), severity, check, str(target), location, detail, fix))
     return key
+
+
+def get(k, default=None):
+    r = rows("SELECT v FROM kv WHERE k=?", (k,))
+    return r[0]["v"] if r else default
+
+
+def put(k, v):
+    execute("INSERT INTO kv(k, v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, str(v)))

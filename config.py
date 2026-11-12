@@ -130,6 +130,7 @@ PERMISSIONS = {
     "sentinel": {"network": [], "ai": []},   # scanners run locally; Sentinel never needs AI
     "writer":   {"network": ["boards-api.greenhouse.io"], "ai": ["think"]},
     "planner":  {"network": ["api.telegram.org"], "ai": ["think"]},
+    "school":   {"network": ["canvas.gmu.edu", "*.instructure.com"], "ai": []},   # read-only calendar feed
 }
 
 # ---- Writer ----
@@ -147,3 +148,9 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 # (reminders that come due during quiet hours wait until morning).
 PHONE_MAX_PER_DAY = int(os.environ.get("PHONE_MAX_PER_DAY", "5"))
 PHONE_QUIET_HOURS = (22, 8)   # 10pm to 8am
+
+# ---- School (Canvas) ----
+# Canvas → Calendar → "Calendar Feed" (bottom right) → copy the link, and put it in .env as
+#   CANVAS_ICS_URL=https://canvas.gmu.edu/feeds/calendars/user_....ics
+# It's read-only, but treat it like a password: anyone with it can see your course calendar.
+CANVAS_ICS_URL = os.environ.get("CANVAS_ICS_URL", "")

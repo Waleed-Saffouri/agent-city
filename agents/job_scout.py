@@ -242,6 +242,21 @@ class JobScout(Agent):
     tier = "worker"
     role = "Finds new jobs every morning and queues the best ones for your approval."
 
+    def expire_closed(self, feeds, failed_boards):
+        """Postings that were taken down since yesterday leave your list (only for sources read today)."""
+        active = {str(j.get("id")) for _, listing in feeds for j in listing if j.get("active", True)}
+        read_lists = {src for src, _ in feeds if src != "company_boards"}
+        gone = 0
+        for r in db.rows("SELECT id, source FROM jobs WHERE status='pending'"):
+            if r["id"] in active:
+                continue
+            board = re.match(r"gh-([a-z0-9]+)-", r["id"])
+            if (board and board[1] not in failed_boards) or (not board and r["source"] in read_lists):
+                db.execute("UPDATE jobs SET status='expired' WHERE id=?", (r["id"],))
+                gone += 1
+        if gone:
+            self.log(f"Removed {gone} job{'s' if gone != 1 else ''} that were taken down.")
+
     def add_salaries(self, rows, limit=25):
         """Open the best postings that don't list pay yet and look for a salary on the page."""
         found, out = 0, []
@@ -323,6 +338,7 @@ class JobScout(Agent):
         self.log(f"Read {len(feeds) - ok} job lists and {ok}/{len(GREENHOUSE_COMPANIES)} company boards."
                  + (f" Couldn't reach: {', '.join(failed[:5])}{'…' if len(failed) > 5 else ''}." if failed else ""),
                  "warn" if failed else "info")
+        self.expire_closed(feeds, failed)
         seen_titles = set()
         for source, listings in feeds:
             for j in listings:

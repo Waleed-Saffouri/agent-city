@@ -18,6 +18,7 @@ I was applying to jobs by hand and wanted a system that does the searching and c
 | Scout | **Job Scout** | Pulls fresh postings from the SimplifyJobs lists plus 27 finance/fintech company boards (Greenhouse), filters and scores them, learns from my approve/skip clicks, and queues the best ones | Rules + one batched AI re-rank per day |
 | Writer | **Writer** | When I approve a job, drafts a cover letter and "what to lead with" CV notes using only facts from my CV; every number in the draft is checked against the CV and anything unsupported is flagged | Yes (mid-tier model) |
 | Planner | **Planner** | Turns a messy brain dump into to-dos, reminders and ideas with real dates ("before friday", "the 19th"), files them under Today / This week / Later, puts what's due in the morning brief, and sends timed reminders to my phone | Yes (mid-tier model), with a no-AI fallback |
+| School | **School** | Reads my Canvas calendar feed (read-only, no password) and adds every assignment, quiz and exam to the Planner, with "start studying" to-dos before tests; moves to-dos when a due date changes | No (free) |
 | Sentinel | **Sentinel** | Blocks commits that contain secrets (pre-commit hook), scans files *and git history* with gitleaks, finds vulnerable packages with pip-audit and risky code with Bandit, and reports agents that break their permissions or receive prompt-injection attempts | No (free) |
 
 Agents communicate through a shared **message board**. Everything they do is written to an **activity log**, and the city animates in real time: windows light up while an agent works, messages travel between buildings, and HQ flashes red when Sentinel finds a high-risk issue.
@@ -67,8 +68,11 @@ git clone https://github.com/Waleed-Saffouri/agent-city.git
 cd agent-city
 cp profile/cv.example.md profile/cv.md   # then put your real CV in it (git ignores this file)
 cp .env.example .env                     # optional: Telegram phone alerts
-./start.sh                               # sets everything up the first time and opens the city
+./install-autostart.sh                   # Mac: runs by itself from now on, even after a restart
 ```
+`install-autostart.sh` registers a macOS LaunchAgent that starts the city at login, restarts it if it stops,
+catches up on the morning routine if the Mac was asleep at 7:00, and fast-forwards to new versions from
+GitHub. `./start.sh` runs it by hand instead.
 Or step by step:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate

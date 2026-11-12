@@ -18,11 +18,32 @@ from agents.manager import Manager
 from agents.sentinel import Sentinel
 from agents.writer import Writer
 from agents.planner import Planner
+from agents.school import School
 from config import DAILY_TOKEN_BUDGET, ROOT
 
-AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "planner": Planner, "manager": Manager}
+AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": School, "planner": Planner, "manager": Manager}
 app = FastAPI(title="Agent City")
 db.init()
+
+
+def add_to_tracker(job_id):
+    """Append the job to your applications tracker so stats stay right and the Scout skips it."""
+    from datetime import date
+    from config import TRACKER_PATH
+    j = db.rows("SELECT company, title, url, salary FROM jobs WHERE id=?", (job_id,))
+    if not j:
+        return
+    j = j[0]
+    TRACKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not TRACKER_PATH.exists():
+        TRACKER_PATH.write_text("# Applications Tracker\n\n| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n"
+                                "|---|------|---------|------|-------|--------|-----|--------|-------|\n")
+    nums = [int(c.split("|")[1]) for c in TRACKER_PATH.read_text().splitlines()
+            if c.startswith("|") and c.split("|")[1].strip().isdigit()]
+    clean = lambda x: (x or "").replace("|", "/")
+    with TRACKER_PATH.open("a") as f:
+        f.write(f"| {max(nums, default=0) + 1} | {date.today()} | {clean(j['company'])} | {clean(j['title'])} | | Applied | | | "
+                f"Via Agent City. {clean(j['salary'])} {j['url']} |\n")
 
 
 @app.get("/")
@@ -53,7 +74,7 @@ def state():
         "activity": db.rows("SELECT * FROM activity ORDER BY ts DESC LIMIT 30"),
         "tokens": {"used": db.tokens_today(), "budget": DAILY_TOKEN_BUDGET},
         "drafts": db.rows("""SELECT d.*, j.company, j.title, j.url FROM drafts d JOIN jobs j ON j.id = d.job_id
-                             ORDER BY d.ts DESC LIMIT 20"""),
+                             WHERE j.status = 'approved' ORDER BY d.ts DESC LIMIT 20"""),
         "approved_waiting": db.rows("""SELECT j.id, j.company, j.title FROM jobs j LEFT JOIN drafts d ON d.job_id = j.id
                                        WHERE j.status='approved' AND d.job_id IS NULL"""),
         "tasks": db.rows("""SELECT * FROM tasks WHERE status='open' OR (status='done' AND done_ts > ?)
@@ -68,7 +89,7 @@ def state():
 def run_agent(name: str):
     if name == "morning":
         def go():
-            JobScout().run(); Sentinel().run(); Writer().run(); Planner().run(); Manager().run()
+            JobScout().run(); Sentinel().run(); Writer().run(); School().run(); Planner().run(); Manager().run()
     else:
         go = AGENTS[name]().run
     threading.Thread(target=go, daemon=True).start()
@@ -79,6 +100,8 @@ def run_agent(name: str):
 def job_action(job_id: str, action: str):
     status = {"approve": "approved", "skip": "skipped", "applied": "applied"}[action]
     db.execute("UPDATE jobs SET status=? WHERE id=?", (status, job_id))
+    if status == "applied":
+        add_to_tracker(job_id)
     job = db.rows("SELECT company, title FROM jobs WHERE id=?", (job_id,))
     if job:
         db.log("you", "decision", f"{status.title()}: {job[0]['company']} – {job[0]['title']}")

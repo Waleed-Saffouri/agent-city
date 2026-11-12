@@ -13,7 +13,7 @@
 :root{
   --ink:#1b2333; --ink-2:#4a5568; --ink-3:#8a94a6;
   --paper:#f7f8fa; --paper-2:#eceff4; --rule:#dde2ea;
-  --hq:#3d6fe0; --scout:#2fa58c; --sentinel:#e8913a; --writer:#8b5cf6; --planner:#c9962b; --alert:#d9434b; --ok:#2f9e6b;
+  --hq:#3d6fe0; --scout:#2fa58c; --sentinel:#e8913a; --writer:#8b5cf6; --planner:#c9962b; --school:#d0567a; --alert:#d9434b; --ok:#2f9e6b;
   --world:#1e2a44;
   --r-sm:6px; --r-lg:14px;
   font-family:"Familjen Grotesk", system-ui, sans-serif;
@@ -182,12 +182,13 @@ const AGENTS = {
   scout:    { name:"Scout",    title:"Job Scout", color:"#2fa58c", tile:[1,2], size:2, h:62,  sign:"SCOUT" },
   sentinel: { name:"Sentinel", title:"Sentinel",  color:"#e8913a", tile:[5,8], size:2, h:84,  sign:"SENTINEL" },
   planner:  { name:"Planner",  title:"Planner",   color:"#c9962b", tile:[8,1], size:2, h:70,  sign:"PLANNER" },
+  school:   { name:"School",   title:"School",    color:"#d0567a", tile:[1,8], size:2, h:58, sign:"SCHOOL" },
   writer:   { name:"Writer",   title:"Writer",    color:"#8b5cf6", tile:[9,8], size:2, h:52,  sign:"WRITER" },
 };
 const LOTS = {
-  inbox:  { tile:[1,8], size:2, sign:"INBOX",  text:"Inbox Watcher will read recruiter replies and assessment emails, and tell HQ when something needs you." },
+  inbox:  { tile:[0,10], size:2, sign:"INBOX",  text:"Inbox Watcher will read recruiter replies and assessment emails, and tell HQ when something needs you." },
   trader: { tile:[10,10], size:2, sign:"TRADER", text:"Trading Tower will run your paper-trading bot and grade it against the S&P 500 every Friday." },
-  school: { tile:[7,10], size:2, sign:"SCHOOL", text:"School will watch Canvas for deadlines and new grades." },
+
 };
 const N = 12, TW = 64, TH = 32;
 const cvs = $("#city"), g = cvs.getContext("2d");
@@ -242,7 +243,7 @@ function ground(){
     if (road && (i+j)%2 === 0){ const c0 = lerp(iso(i,j), iso(i+1,j+1), .5); g.fillStyle = "#c8b46a88"; g.fillRect(c0[0]-3*SC, c0[1]-1, 6*SC, 2); }
   }
   // trees on a few grass tiles
-  [[0,0],[11,0],[0,11],[11,11],[2,0],[8,11],[11,4],[0,5],[3,10],[7,5],[10,5],[2,5]].forEach(([i,j]) => {
+  [[0,0],[11,0],[11,11],[2,0],[8,11],[0,5],[3,11],[7,5],[2,5],[7,11],[11,4],[10,5]].forEach(([i,j]) => {
     const [x,y] = lerp(iso(i,j), iso(i+1,j+1), .5);
     g.fillStyle = "#5b3d2a"; g.fillRect(x-1.5*SC, y-10*SC, 3*SC, 10*SC);
     g.fillStyle = "#2f6b4a"; g.beginPath(); g.arc(x, y-16*SC, 9*SC, 0, 7); g.fill();
@@ -318,7 +319,7 @@ function sign(text, at, bg, note){
 }
 
 /* couriers carry each new message along the roads */
-const DOOR = { manager:[4.5,2.5], scout:[4.5,3.5], sentinel:[6,6.5], writer:[10,6.5], planner:[9,6.5] };
+const DOOR = { manager:[4.5,2.5], scout:[4.5,3.5], sentinel:[6,6.5], writer:[10,6.5], planner:[9,6.5], school:[4.5,8.5] };
 const JUNCTION = [4.5, 6.5];   // where the two roads cross; every courier passes through it
 function spawnCouriers(){
   (S?.messages || []).slice().reverse().forEach(m => {
@@ -374,7 +375,7 @@ function md(text){  // tiny, safe markdown: bold + bullets + paragraphs
 const statusLine = id => { const a = (S.agents || []).find(x => x.name === id) || {};
   const last = (S.activity || []).find(x => x.agent === id && x.kind === "done");
   return `<span>Status <b>${a.status === "working" ? "working now" : a.status === "error" ? "needs a look" : "idle"}</b></span>
-          <span>Model <b>${a.name === "sentinel" ? "none (free)" : a.tier === "manager" ? "Sonnet" : "Haiku / local"}</b></span>
+          <span>Model <b>${["sentinel", "school"].includes(a.name) ? "none (free)" : a.tier === "manager" ? "Sonnet" : "Haiku / local"}</b></span>
           <span>Last run <b>${last ? ago(last.ts) : "not yet"}</b></span>
           <button class="acts" style="margin-left:auto;border:0;background:none;color:var(--hq);font-weight:600;padding:0" onclick="run('${id}')">Run now</button>`; };
 
@@ -434,13 +435,26 @@ const VIEWS = {
         <div class="dumpbar"><span class="small-note" id="dumpNote">Dates like "friday" or "the 19th" are understood.</span><button id="sort">Sort it</button></div>
         ${lists || `<p class="empty">Nothing on your list. Dump whatever's on your mind above.</p>`}` };
   },
+  school(){
+    const r = (S.agents.find(a => a.name === "school") || {}).last_result || {};
+    const items = (S.tasks || []).filter(t => t.project === "School" && t.status === "open").sort((a, b) => (a.due || "").localeCompare(b.due || ""));
+    const fmt = d => new Date(d + "T12:00").toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+    const list = items.length ? items.map(t => `<div class="task"><input type="checkbox" aria-label="Mark done" onchange="taskAct(${t.id}, this.checked ? 'done' : 'undo')">
+        <div class="meta"><span class="ttl">${esc(t.title)}</span><div class="sub">${t.due ? fmt(t.due) + (t.due_time ? " at " + t.due_time : "") : ""}${t.priority === "high" ? " · important" : ""}</div></div></div>`).join("")
+      : (r.connected === false
+        ? `<p class="empty">Not connected to Canvas yet. In Canvas, open <b>Calendar</b>, click <b>Calendar Feed</b> (bottom right) and copy the link. Then ask Claude to add it, or put it in the .env file as CANVAS_ICS_URL.</p>`
+        : `<p class="empty">Nothing due in the next three weeks. Press Run now to check Canvas again.</p>`);
+    return { title:"School", role:"Reads your Canvas calendar: every assignment, quiz and exam goes into your Planner, with study time before tests.", color:"var(--school)", tag:"SCH",
+      status: statusLine("school"), body: list };
+  },
   writer(){
     const D = S.drafts || [], W = S.approved_waiting || [];
     const waiting = W.length ? `<p class="empty" style="padding-top:0">Writing now: ${W.map(w => esc(w.company)).join(", ")}</p>` : "";
     const list = D.length ? D.map(d => `<div class="item"><div class="sev ${d.status === "ready" ? "low" : "medium"}" style="${d.status === "ready" ? "color:var(--ok)" : ""}">${d.status === "ready" ? "Ready" : "Check"}</div>
         <div class="meta"><b>${esc(d.company)}</b><div class="sub">${esc(d.title)}</div>
           ${d.note ? `<div class="sub">${esc(d.note)}</div>` : ""}
-          <div class="fix" style="margin-top:6px"><a href="/drafts/${encodeURIComponent(d.job_id)}" target="_blank" rel="noopener">open the cover letter</a> · <a href="${esc(d.url)}" target="_blank" rel="noopener">job posting</a></div></div></div>`).join("")
+          <div class="fix" style="margin-top:6px"><a href="/drafts/${encodeURIComponent(d.job_id)}" target="_blank" rel="noopener">open the cover letter</a> · <a href="${esc(d.url)}" target="_blank" rel="noopener">job posting</a></div></div>
+          <div class="acts"><button class="yes" onclick="act('${d.job_id}','applied')" title="Adds it to your applications tracker">I applied</button></div></div>`).join("")
       : `<p class="empty">No drafts yet. Approve a job in the Scout and the Writer drafts a cover letter from your CV within a minute.</p>`;
     return { title:"Writer", role:"Drafts a cover letter and CV notes for every job you approve, using only facts from your CV.", color:"var(--writer)", tag:"WRT",
       status: statusLine("writer"), body: waiting + list };

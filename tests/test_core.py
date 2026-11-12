@@ -194,3 +194,14 @@ def test_spring_internship_must_be_commutable():
     from agents.job_scout import commutable
     assert commutable(["Reston, VA"]) and commutable(["Remote in USA"]) and commutable(["Washington, DC"])
     assert not commutable(["NYC"]) and not commutable(["Remote in Canada"]) and not commutable(["Austin, TX"])
+
+
+def test_canvas_feed_parsing():
+    from agents.school import parse_ics
+    ics = ("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:event-assignment-1\r\nDTSTART:20261118T045900Z\r\n"
+           "SUMMARY:Homework 6 [CDS 421-001 (Fall 2026)]\r\nURL:https://canvas.gmu.edu/x\r\nEND:VEVENT\r\n"
+           "BEGIN:VEVENT\r\nUID:event-2\r\nDTSTART;VALUE=DATE:20261201\r\nSUMMARY:Final Exam [MATH 203-002]\r\n"
+           " \r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+    ev = parse_ics(ics)
+    assert ev[0]["title"] == "Homework 6" and ev[0]["course"] == "CDS 421" and ev[0]["time"]
+    assert ev[1]["title"] == "Final Exam" and ev[1]["course"] == "MATH 203" and ev[1]["time"] is None
