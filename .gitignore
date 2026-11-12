@@ -6,3 +6,4 @@ __pycache__/
 stale-*
 profile/*
 !profile/cv.example.md
+.venv/
