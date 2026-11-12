@@ -1,0 +1,82 @@
+"""The Manager: reads the message board and everyone's results, writes the morning brief,
+watches for crashed agents, and answers your questions in chat."""
+import re
+import time
+
+import db
+from agents.base import Agent
+from config import TRACKER_PATH
+
+
+def tracker_stats():
+    """Counts applications by status from the career-ops tracker (if it exists)."""
+    if not TRACKER_PATH.exists():
+        return None
+    counts = {}
+    for line in TRACKER_PATH.read_text().splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        if len(cells) > 6 and cells[1].isdigit():
+            counts[cells[6]] = counts.get(cells[6], 0) + 1
+    return counts
+
+
+class Manager(Agent):
+    name = "manager"
+    tier = "manager"
+    role = "Runs the city: morning brief, delegates work, steps in when an agent breaks."
+
+    def gather(self):
+        since = time.time() - 86400
+        return {
+            "messages": db.rows("SELECT sender, text FROM messages WHERE recipient='manager' AND ts > ? ORDER BY ts", (since,)),
+            "pending": db.rows("SELECT company, title, score FROM jobs WHERE status='pending' ORDER BY score DESC LIMIT 5"),
+            "pending_count": db.rows("SELECT COUNT(*) n FROM jobs WHERE status='pending'")[0]["n"],
+            "errors": db.rows("SELECT agent FROM agent_state WHERE status='error'"),
+            "tracker": tracker_stats(),
+            "tokens": db.tokens_today(),
+        }
+
+    def work(self):
+        g = self.gather()
+        # Step in when something breaks (from the "Ultron" clip).
+        for e in g["errors"]:
+            self.log(f"{e['agent']} is down. Flagging it in the brief.", "alert")
+
+        prompt = ("You are the manager of Waleed's personal AI agent city. Write a short, friendly "
+                  "morning brief (under 150 words, bullet points) from this data. Highlight what needs "
+                  f"his approval first.\n\nDATA: {g}")
+        brief = self.think(prompt) or self.template_brief(g)
+        db.execute("INSERT INTO briefs(ts, text) VALUES (?,?)", (time.time(), brief))
+        self.send("all", "Morning brief is ready.")
+        return {"pending": g["pending_count"]}
+
+    @staticmethod
+    def template_brief(g):
+        lines = ["Good morning, Waleed. Here's your city today:"]
+        if g["pending_count"]:
+            lines.append(f"• {g['pending_count']} job matches waiting for your approval. Best ones:")
+            lines += [f"   – {p['company']}: {p['title']} (fit {p['score']})" for p in g["pending"][:3]]
+        else:
+            lines.append("• No new job matches waiting.")
+        if g["tracker"]:
+            t = g["tracker"]
+            lines.append("• Applications: " + ", ".join(f"{v} {k.lower()}" for k, v in t.items()))
+        for e in g["errors"]:
+            lines.append(f"• ⚠️ {e['agent']} crashed and needs a look.")
+        lines.append(f"• Tokens used today: {g['tokens']:,}")
+        return "\n".join(lines)
+
+    def chat(self, question):
+        g = self.gather()
+        answer = self.think(f"You manage Waleed's AI agent city. Answer briefly and plainly.\n"
+                            f"City data: {g}\n\nWaleed asks: {question}")
+        if answer:
+            return answer
+        # Simple rule-based answers when no AI key is set.
+        q = question.lower()
+        if re.search(r"job|match|approv", q):
+            return self.template_brief(g)
+        if "budget" in q or "token" in q:
+            return f"We've used {g['tokens']:,} tokens today."
+        return ("I don't have an AI key yet, so I can only answer about jobs, approvals and budget. "
+                "Add ANTHROPIC_API_KEY to talk to me properly.")

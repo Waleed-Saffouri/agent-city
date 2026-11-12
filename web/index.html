@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent City</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0e1020; --panel:#171a30; --line:#2a2f52; --text:#e8e9f3; --muted:#9aa0c3;
+          --accent:#ffcf5c; --good:#5ee6a8; --bad:#ff6b7a; --blue:#6aa8ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter, system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:16px; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  h1 { font:16px 'Press Start 2P', monospace; margin:0; color:var(--accent); letter-spacing:1px; }
+  .budget { flex:1; min-width:200px; max-width:360px; }
+  .bar { height:10px; background:#232744; border-radius:6px; overflow:hidden; }
+  .bar > div { height:100%; background:linear-gradient(90deg,var(--good),var(--accent)); width:0; }
+  .small { color:var(--muted); font-size:12px; }
+  button { background:var(--accent); color:#1a1300; border:0; border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:wait; }
+  main { display:grid; align-items:start; grid-template-columns: minmax(0,1.35fr) minmax(320px,1fr); gap:16px; padding:16px 20px; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; padding:12px 16px; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card h2 { font:11px 'Press Start 2P', monospace; color:var(--blue); margin:0 0 12px; }
+  canvas { width:100%; height:auto; display:block; image-rendering:pixelated; border-radius:8px; background:#0b0d1a; cursor:pointer; }
+  #info { margin-top:10px; min-height:44px; }
+  .brief { white-space:pre-wrap; }
+  #jobs { max-height:520px; overflow:auto; }
+  .job { border-top:1px solid var(--line); padding:10px 0; display:flex; gap:10px; align-items:flex-start; }
+  .job:first-child { border-top:0; }
+  .score { font:10px 'Press Start 2P', monospace; background:#26304f; color:var(--good); padding:6px; border-radius:6px; min-width:42px; text-align:center; }
+  .job .meta { flex:1; min-width:0; }
+  .job a { color:var(--text); font-weight:600; text-decoration:none; }
+  .job a:hover { text-decoration:underline; }
+  .actions { display:flex; gap:6px; }
+  .actions button { padding:6px 9px; font-size:12px; }
+  .log { font-size:12px; max-height:220px; overflow:auto; }
+  .log div { padding:3px 0; border-bottom:1px dashed #23284a; }
+  .tag { color:var(--accent); font-weight:600; }
+  .chat { display:flex; gap:8px; margin-top:10px; }
+  .chat input { flex:1; background:#0f1226; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  .answer { white-space:pre-wrap; margin-top:10px; color:#dfe3ff; }
+  .stack { display:grid; gap:16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AGENT CITY</h1>
+  <div class="budget">
+    <div class="small">Token budget today <span id="tok"></span></div>
+    <div class="bar"><div id="tokbar"></div></div>
+  </div>
+  <button id="runMorning">▶ Run morning routine</button>
+</header>
+<main>
+  <section class="stack">
+    <div class="card">
+      <h2>THE CITY</h2>
+      <canvas id="city" width="640" height="360"></canvas>
+      <div id="info" class="small">Click a building to see what that agent does.</div>
+    </div>
+    <div class="card">
+      <h2>WORK LOG</h2>
+      <div id="log" class="log"></div>
+    </div>
+  </section>
+  <section class="stack">
+    <div class="card">
+      <h2>MORNING BRIEF</h2>
+      <div id="brief" class="brief small">No brief yet. Run the morning routine.</div>
+      <div class="chat"><input id="q" placeholder="Ask the manager…"><button id="ask" class="ghost">Ask</button></div>
+      <div id="answer" class="answer small"></div>
+    </div>
+    <div class="card">
+      <h2>WAITING ON YOU <span id="pcount"></span></h2>
+      <div id="jobs" class="small">Nothing yet.</div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let STATE = null, tick = 0;
+
+// Buildings in the city. Future agents show as construction lots.
+const B = [
+  { id:"manager", label:"HQ",     x:270, y:110, w:110, h:150, color:"#6aa8ff" },
+  { id:"scout",   label:"SCOUT",  x:80,  y:160, w:100, h:100, color:"#5ee6a8" },
+  { id:"inbox",   label:"INBOX",  x:470, y:170, w:90,  h:90,  color:"#ffcf5c", soon:true },
+  { id:"school",  label:"SCHOOL", x:30,  y:290, w:90,  h:0,   color:"#c58cff", soon:true },
+  { id:"trader",  label:"TRADER", x:560, y:120, w:60,  h:140, color:"#ff6b7a", soon:true },
+];
+const SOON = { inbox:"Inbox Watcher: reads recruiter replies & assessments (coming soon)",
+               trader:"Trading Tower: your paper-trading bot vs. the S&P 500 (coming soon)",
+               school:"School: Canvas deadlines & grades (coming soon)" };
+
+function drawCity() {
+  const c = $("#city"), g = c.getContext("2d");
+  g.clearRect(0,0,c.width,c.height);
+  // sky + stars
+  g.fillStyle = "#0b0d1a"; g.fillRect(0,0,c.width,c.height);
+  for (let i=0;i<40;i++){ g.fillStyle = (i+tick)%17===0 ? "#ffffff" : "#3a3f6b"; g.fillRect((i*97)%640,(i*53)%140,2,2); }
+  // ground + road
+  g.fillStyle = "#1a1d36"; g.fillRect(0,260,640,100);
+  g.fillStyle = "#2a2f52"; g.fillRect(0,300,640,18);
+  for (let x=(tick*4)%40; x<640; x+=40){ g.fillStyle="#ffcf5c55"; g.fillRect(x,308,18,2); }
+
+  const status = {}; (STATE?.agents||[]).forEach(a => status[a.name]=a.status);
+  B.forEach(b => {
+    if (b.soon) {               // construction lot
+      g.strokeStyle = "#3a3f6b"; g.setLineDash([4,4]);
+      g.strokeRect(b.x, 260-(b.h||40), b.w, b.h||40); g.setLineDash([]);
+      g.fillStyle="#4a5080"; g.font="8px 'Press Start 2P'"; g.fillText(b.label, b.x+4, 255-(b.h||40)/2+4);
+      return;
+    }
+    const working = status[b.id]==="working", err = status[b.id]==="error";
+    g.fillStyle = "#20244a"; g.fillRect(b.x, b.y, b.w, b.h);
+    g.fillStyle = b.color; g.fillRect(b.x, b.y, b.w, 8);
+    // windows: light up and flicker when the agent is working
+    for (let wy=b.y+18; wy<b.y+b.h-14; wy+=18) for (let wx=b.x+10; wx<b.x+b.w-12; wx+=18) {
+      const on = working ? ((wx+wy+tick*7)%5!==0) : ((wx*3+wy)%7===0);
+      g.fillStyle = err ? "#ff6b7a" : on ? "#ffe9a3" : "#2c3160";
+      g.fillRect(wx, wy, 10, 10);
+    }
+    g.fillStyle="#e8e9f3"; g.font="9px 'Press Start 2P'";
+    g.fillText(b.label, b.x+(b.w-b.label.length*9)/2, b.y-8);
+    if (working) { g.fillStyle="#5ee6a8"; g.fillText("WORKING", b.x+(b.w-63)/2, b.y-22); }
+  });
+
+  // message lines: recent messages travel between buildings
+  const recent = (STATE?.messages||[]).filter(m => Date.now()/1000 - m.ts < 120);
+  recent.forEach((m,i) => {
+    const from = B.find(b=>b.id===m.sender), to = B.find(b=>b.id===(m.recipient==="all"?"scout":m.recipient));
+    if (!from || !to || from===to) return;
+    const ax=from.x+from.w/2, ay=from.y+20, bx=to.x+to.w/2, by=to.y+20;
+    g.strokeStyle="#ffcf5c88"; g.beginPath(); g.moveTo(ax,ay); g.lineTo(bx,by); g.stroke();
+    const t = ((tick*3 + i*20) % 60)/60;
+    g.fillStyle="#ffcf5c"; g.fillRect(ax+(bx-ax)*t-3, ay+(by-ay)*t-3, 6, 6);
+  });
+}
+
+$("#city").addEventListener("click", e => {
+  const r = e.target.getBoundingClientRect(), sx = 640/r.width, x=(e.clientX-r.left)*sx, y=(e.clientY-r.top)*sx;
+  const b = B.find(b => x>=b.x && x<=b.x+b.w && y>=(b.soon?220:b.y) && y<=262);
+  if (!b) return;
+  if (b.soon) { $("#info").textContent = SOON[b.id]; return; }
+  const a = STATE.agents.find(a=>a.name===b.id);
+  $("#info").innerHTML = `<b>${b.label}</b> · ${a.role}<br>Status: ${a.status} · Model tier: ${a.tier}` +
+    (a.last_result ? ` · Last run: ${JSON.stringify(a.last_result)}` : "") +
+    ` <button class="ghost" style="margin-left:8px;padding:4px 8px" onclick="run('${b.id}')">Run now</button>`;
+});
+
+function ago(ts){ const s=Math.round(Date.now()/1000-ts); return s<60?`${s}s`:s<3600?`${Math.round(s/60)}m`:`${Math.round(s/3600)}h`; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function render() {
+  const s = STATE;
+  $("#tok").textContent = `${s.tokens.used.toLocaleString()} / ${s.tokens.budget.toLocaleString()}`;
+  $("#tokbar").style.width = Math.min(100, 100*s.tokens.used/s.tokens.budget) + "%";
+  if (s.brief) $("#brief").textContent = s.brief;
+  $("#pcount").textContent = s.jobs.length ? `(${s.counts.pending||s.jobs.length})` : "";
+  $("#jobs").innerHTML = s.jobs.length ? s.jobs.map(j => `
+    <div class="job">
+      <div class="score">${j.score}</div>
+      <div class="meta"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.company)} — ${esc(j.title)}</a>
+        <div class="small">${esc(j.locations)}</div>
+        <div class="small">${j.reasons.map(esc).join(" · ")}</div></div>
+      <div class="actions"><button onclick="act('${j.id}','approve')">✓</button>
+        <button class="ghost" onclick="act('${j.id}','skip')">✕</button></div>
+    </div>`).join("") : "Nothing waiting. 🎉";
+  $("#log").innerHTML = s.activity.map(a => `<div><span class="small">${ago(a.ts)}</span> <span class="tag">${esc(a.agent)}</span> ${esc(a.text)}</div>`).join("");
+}
+
+async function refresh(){ try { STATE = await (await fetch("/api/state")).json(); render(); } catch(e){} }
+async function run(name){ $("#runMorning").disabled = true; await fetch(`/api/run/${name}`, {method:"POST"}); setTimeout(()=>$("#runMorning").disabled=false, 4000); refresh(); }
+async function act(id, action){ await fetch(`/api/jobs/${id}/${action}`, {method:"POST"}); refresh(); }
+$("#runMorning").onclick = () => run("morning");
+$("#ask").onclick = async () => {
+  const text = $("#q").value.trim(); if (!text) return;
+  $("#answer").textContent = "…";
+  const r = await (await fetch("/api/chat", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})})).json();
+  $("#answer").textContent = r.answer; $("#q").value=""; refresh();
+};
+$("#q").addEventListener("keydown", e => { if (e.key==="Enter") $("#ask").click(); });
+
+refresh(); setInterval(refresh, 3000);
+setInterval(() => { tick++; drawCity(); }, 120);
+</script>
+</body>
+</html>

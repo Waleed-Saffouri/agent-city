@@ -1,0 +1,3 @@
+fastapi
+uvicorn
+anthropic  # optional: without ANTHROPIC_API_KEY the agents use rule-based fallbacks
