@@ -21,6 +21,19 @@ from agents.planner import Planner
 from agents.school import School
 from config import DAILY_TOKEN_BUDGET, ROOT
 
+import subprocess as _sp
+
+
+def _git_head():
+    try:
+        return _sp.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True,
+                       text=True, timeout=10).stdout.strip()
+    except Exception:
+        return ""
+
+
+RUNNING_VERSION = _git_head()   # the code this server process started with
+
 AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": School, "planner": Planner, "manager": Manager}
 app = FastAPI(title="Agent City")
 db.init()
@@ -73,6 +86,9 @@ def state():
         "messages": db.rows("SELECT * FROM messages ORDER BY ts DESC LIMIT 15"),
         "activity": db.rows("SELECT * FROM activity ORDER BY ts DESC LIMIT 30"),
         "tokens": {"used": db.tokens_today(), "budget": DAILY_TOKEN_BUDGET},
+        "version": {"running": RUNNING_VERSION, "on_disk": _git_head()},
+        "problems": db.rows("""SELECT * FROM activity WHERE kind IN ('error','warn','blocked') AND ts > ?
+                               ORDER BY ts DESC LIMIT 40""", (time.time() - 3 * 86400,)),
         "drafts": db.rows("""SELECT d.*, j.company, j.title, j.url FROM drafts d JOIN jobs j ON j.id = d.job_id
                              WHERE j.status = 'approved' ORDER BY d.ts DESC LIMIT 20"""),
         "approved_waiting": db.rows("""SELECT j.id, j.company, j.title FROM jobs j LEFT JOIN drafts d ON d.job_id = j.id

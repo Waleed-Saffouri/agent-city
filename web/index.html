@@ -40,7 +40,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rende
 /* bottom dock: the three things that need you */
 .dock{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;z-index:5;
   padding:6px;background:rgba(247,248,250,.94);border-radius:16px;box-shadow:0 6px 24px rgba(10,16,30,.25);
-  max-width:calc(100vw - 32px);overflow-x:auto}
+  max-width:calc(100vw - 32px);flex-wrap:wrap;justify-content:center}
 .dock button{display:flex;align-items:center;gap:8px;border:0;background:transparent;border-radius:11px;
   padding:9px 12px;white-space:nowrap;color:var(--ink);font-weight:500}
 .dock button:hover,.dock button[aria-pressed=true]{background:var(--paper-2)}
@@ -50,6 +50,10 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rende
   color:#eef2f8;font-size:13px;line-height:1.35;pointer-events:none;background:rgba(27,35,51,.72);
   border-radius:10px;padding:8px 12px}
 .ticker:empty{display:none}
+.banner{position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:7;background:#fff4d6;color:#5a4300;
+  border:1px solid #e7c873;border-radius:10px;padding:10px 14px;font-size:14px;max-width:min(640px,calc(100vw - 32px));
+  box-shadow:0 6px 24px rgba(10,16,30,.2)}
+.banner[hidden]{display:none}
 .ticker div{opacity:.85;margin-top:3px}
 .ticker div:first-child{opacity:1}
 
@@ -150,6 +154,7 @@ textarea{width:100%;border:1px solid var(--rule);border-radius:10px;padding:10px
 </div>
 
 <div class="ticker" id="ticker" aria-live="polite"></div>
+<div class="banner" id="banner" hidden></div>
 
 <nav class="dock" aria-label="Open a panel">
   <button data-open="manager"><span class="dot" style="background:var(--hq)"></span>Morning brief</button>
@@ -157,7 +162,7 @@ textarea{width:100%;border:1px solid var(--rule);border-radius:10px;padding:10px
   <button data-open="scout"><span class="dot" style="background:var(--scout)"></span><span class="count" id="dJobs">0</span> jobs to review</button>
   <button data-open="writer"><span class="dot" style="background:var(--writer)"></span><span id="dDrafts">Drafts</span></button>
   <button data-open="sentinel"><span class="dot" id="dSecDot" style="background:var(--sentinel)"></span><span id="dSec">Security</span></button>
-  <button data-open="log"><span class="dot" style="background:var(--ink-3)"></span>Work log</button>
+  <button data-open="log"><span class="dot" id="dLogDot" style="background:var(--ink-3)"></span><span id="dLog">Work log</span></button>
 </nav>
 
 <aside class="panel" id="panel" aria-live="polite">
@@ -359,8 +364,16 @@ requestAnimationFrame(frame);
 function inside(pt, pts){ let c = false; for (let a = 0, b = pts.length-1; a < pts.length; b = a++){
   const [xi, yi] = pts[a], [xj, yj] = pts[b];
   if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj-xi)*(pt[1]-yi)/(yj-yi) + xi) c = !c; } return c; }
-cvs.addEventListener("click", e => { const hit = shapes.slice().reverse().find(s => inside([e.clientX, e.clientY], s.pts)); if (hit) open(hit.id); });
-cvs.addEventListener("mousemove", e => { cvs.style.cursor = shapes.some(s => inside([e.clientX, e.clientY], s.pts)) ? "pointer" : "default"; });
+function hitTest(x, y){
+  const exact = shapes.slice().reverse().find(s => inside([x, y], s.pts));
+  if (exact) return exact;
+  let best = null, bd = 10;   // a near miss (within ~50px of a building) still counts
+  for (const s of shapes){ const cx = s.pts.reduce((a, p) => a + p[0], 0)/s.pts.length, cy = s.pts.reduce((a, p) => a + p[1], 0)/s.pts.length;
+    const d = Math.hypot(cx - x, cy - y) - 40; if (d < bd){ bd = d; best = s; } }
+  return best;
+}
+cvs.addEventListener("click", e => { const hit = hitTest(e.clientX, e.clientY); if (hit) open(hit.id); });
+cvs.addEventListener("mousemove", e => { cvs.style.cursor = hitTest(e.clientX, e.clientY) ? "pointer" : "default"; });
 
 /* ---------- panels ---------- */
 function md(text){  // tiny, safe markdown: bold + bullets + paragraphs
@@ -401,7 +414,7 @@ const VIEWS = {
           <div class="why">${(j.reasons || []).filter(r => !r.startsWith("pays ")).map(r => `<span class="${r.startsWith("AI:") ? "ai" : ""}">${esc(r.replace(/^AI: /, ""))}</span>`).join("")}</div></div>
         <div class="acts"><button class="yes" onclick="act('${j.id}','approve')">Approve</button><button onclick="act('${j.id}','skip')">Skip</button></div>
       </div>`).join("") : `<p class="empty">Nothing waiting here. The Scout checks again every morning, or press Run now.</p>`;
-    const r = (S.agents.find(a => a.name === "scout") || {}).last_result || {};
+    const r = ((S.agents || []).find(a => a.name === "scout") || {}).last_result || {};
     const count = t => all.filter(j => (j.track || "fulltime") === t).length;
     return { title:"Job Scout", role:"Finds Spring 2027 internships and full-time jobs for after May, filters them for you, and learns from your choices.", color:"var(--scout)", tag:"SCT",
       status: statusLine("scout"),
@@ -436,7 +449,7 @@ const VIEWS = {
         ${lists || `<p class="empty">Nothing on your list. Dump whatever's on your mind above.</p>`}` };
   },
   school(){
-    const r = (S.agents.find(a => a.name === "school") || {}).last_result || {};
+    const r = ((S.agents || []).find(a => a.name === "school") || {}).last_result || {};
     const items = (S.tasks || []).filter(t => t.project === "School" && t.status === "open").sort((a, b) => (a.due || "").localeCompare(b.due || ""));
     const fmt = d => new Date(d + "T12:00").toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
     const list = items.length ? items.map(t => `<div class="task"><input type="checkbox" aria-label="Mark done" onchange="taskAct(${t.id}, this.checked ? 'done' : 'undo')">
@@ -459,12 +472,29 @@ const VIEWS = {
     return { title:"Writer", role:"Drafts a cover letter and CV notes for every job you approve, using only facts from your CV.", color:"var(--writer)", tag:"WRT",
       status: statusLine("writer"), body: waiting + list };
   },
+  sentinel(){
+    const F = S.findings || [], r = ((S.agents || []).find(a => a.name === "sentinel") || {}).last_result || {};
+    const tools = (r.tools || []);
+    const list = F.length ? F.map(f => `<div class="item"><div class="sev ${f.severity}">${f.severity === "high" ? "High" : f.severity === "medium" ? "Medium" : "Low"}</div>
+        <div class="meta"><b>${esc(f.check_name)}</b><div class="sub">${esc(f.target)} — ${esc(f.location)}</div>
+          <div class="sub">${esc(f.detail)}</div><div class="fix">${/^See https?:\/\//.test(f.fix) ? `<a href="${esc(f.fix.slice(4))}" target="_blank" rel="noopener">read the guide for this issue</a>` : esc(f.fix)}</div></div>
+        <div class="acts"><button onclick="dismiss('${f.id}')" title="Hide this finding">Dismiss</button></div></div>`).join("")
+      : `<p class="empty">${r.tools ? "No open issues. Your projects are clean." : "Sentinel hasn't scanned yet. Press Run now."}</p>`;
+    return { title:"Sentinel", role:"Blocks leaked keys before they're committed and scans your projects every morning.", color:"var(--sentinel)", tag:"SEC",
+      status: statusLine("sentinel"),
+      body: `${tools.length ? `<div class="tools">${tools.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}${list}` };
+  },
+
   log(){
-    return { title:"Work log", role:"Everything the agents did, newest first.", color:"var(--ink-2)", tag:"LOG", status:"",
-      body: `<div class="log">${(S.activity || []).map(a => `<div><span class="when">${ago(a.ts)}</span><span class="who" style="color:${AGENTS[a.agent]?.color || "var(--ink)"}">${esc(AGENTS[a.agent]?.title || a.agent)}</span> ${esc(a.text)}</div>`).join("")}</div>` };
+    const P = S.problems || [];
+    const line = a => `<div><span class="when">${ago(a.ts)}</span><span class="who" style="color:${AGENTS[a.agent]?.color || "var(--ink)"}">${esc(AGENTS[a.agent]?.title || a.agent)}</span> ${esc(a.text)}</div>`;
+    return { title:"Work log", role:"What went wrong lately, then everything the agents did, newest first.", color:"var(--ink-2)", tag:"LOG", status:"",
+      body: `<h3 class="${P.length ? "late" : ""}">Problems in the last 3 days <span class="n">${P.length}</span></h3>
+        <div class="log">${P.length ? P.map(line).join("") : `<p class="empty">No problems. Everything ran cleanly.</p>`}</div>
+        <h3>Everything</h3><div class="log">${(S.activity || []).map(line).join("")}</div>` };
   },
 };
-function lotView(id){ const l = LOTS[id]; return { title: l.sign[0] + l.sign.slice(1).toLowerCase(), role:"Under construction", color:"#8a7a4a", tag:"…", status:"", body:`<p class="empty">${esc(l.text)}</p>` }; }
+function lotView(id){ const l = LOTS[id] || { sign: id.toUpperCase(), text: "This panel isn't available yet." }; return { title: l.sign[0] + l.sign.slice(1).toLowerCase(), role:"Under construction", color:"#8a7a4a", tag:"…", status:"", body:`<p class="empty">${esc(l.text)}</p>` }; }
 
 function open(id){ openId = id; render(true); $("#panel").classList.add("open"); resize();
   document.querySelectorAll(".dock button").forEach(b => b.setAttribute("aria-pressed", b.dataset.open === id)); }
@@ -474,9 +504,17 @@ document.querySelectorAll(".dock button").forEach(b => b.onclick = () => openId 
 
 function render(force){
   if (!S) return;
-  $("#tok").textContent = `${Math.round(S.tokens.used/1000)}k / ${Math.round(S.tokens.budget/1000)}k`;
-  $("#tokfill").style.width = Math.min(100, 100*S.tokens.used/S.tokens.budget) + "%";
-  $("#dJobs").textContent = S.counts.pending || 0;
+  const tk = S.tokens || { used: 0, budget: 1 };
+  $("#tok").textContent = `${Math.round(tk.used/1000)}k / ${Math.round(tk.budget/1000)}k`;
+  $("#tokfill").style.width = Math.min(100, 100*tk.used/tk.budget) + "%";
+  $("#dJobs").textContent = (S.counts || {}).pending || 0;
+  const nProb = (S.problems || []).filter(p => p.kind !== "warn" || /failed|offline|couldn't|blocked/i.test(p.text)).length;
+  $("#dLog").textContent = nProb ? `${nProb} problem${nProb > 1 ? "s" : ""}` : "Work log";
+  $("#dLogDot").style.background = nProb ? "var(--alert)" : "var(--ink-3)";
+  const ver = S.version || {};
+  $("#banner").hidden = !(!ver.running || (ver.on_disk && ver.running !== ver.on_disk));
+  $("#banner").textContent = "Agent City was updated, but the old version is still running, so some buildings may not work. " +
+    "Restart it: in Terminal press Control+C, then run ./install-autostart.sh once (after that it restarts itself).";
   const due = (S.tasks || []).filter(t => t.status === "open" && t.kind !== "idea" && t.due && t.due <= S.today).length;
   $("#dPlan").textContent = due ? `${due} due today` : "To-dos";
   $("#dPlanDot").style.background = due ? "var(--alert)" : "var(--planner)";

@@ -27,6 +27,7 @@ AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": S
 ORDER = ("scout", "sentinel", "writer", "school", "planner", "manager")   # manager last: the brief sees everything
 MORNING_HOUR = 7
 UPDATE_EVERY = 30 * 60
+SCHOOL_EVERY = 2 * 60 * 60   # Canvas is checked every 2 hours (8am-10pm); it's free, no AI
 
 
 def morning():
@@ -64,11 +65,18 @@ def update_available():
 
 def schedule(serve_web=False, auto_update=False):
     print(f"Agent City running. Morning routine at {MORNING_HOUR}:00 (or as soon as the Mac wakes up after that).")
-    last_check = 0
+    last_check = last_school = 0
     while True:
         now = datetime.now()
         if morning_due(now):
             morning()
+            last_school = time.time()
+        elif 8 <= now.hour < 22 and time.time() - last_school > SCHOOL_EVERY:
+            last_school = time.time()
+            try:   # keep the Planner current with Canvas all day, not just at 7am
+                School().run()
+            except Exception:
+                pass
         try:
             Planner().remind_due(now)   # timed reminders, checked every minute (no AI, free)
         except Exception as e:
