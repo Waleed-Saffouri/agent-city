@@ -13,7 +13,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import db
 from agents.base import Agent
-from config import CANVAS_ICS_URL
+from config import CANVAS_ICS_URL, ROOT
+
+SYLLABUS_PATH = ROOT / "profile" / "syllabus.json"   # dates pulled from each class's syllabus (private)
+SYLLABUS_LOOKAHEAD = 45   # syllabus dates are early warnings, so look further ahead
 
 LOOKAHEAD_DAYS = 21
 EXAM = re.compile(r"(?i)\b(final exam|midterm|exam|test|final)\b")
@@ -57,6 +60,32 @@ def parse_ics(text):
     return events
 
 
+def load_syllabus():
+    """Dated items from your syllabi: [{course, title, due: YYYY-MM-DD, kind}]. Missing file = none."""
+    import json
+    try:
+        items = json.loads(SYLLABUS_PATH.read_text())
+    except (OSError, ValueError):
+        return []
+    out = []
+    for it in items if isinstance(items, list) else []:
+        try:
+            out.append({**it, "due": date.fromisoformat(it["due"])})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def same_item(a_title, b_title):
+    """Rough match between a syllabus line and a Canvas assignment ("Exam 2" vs "Midterm Exam 2")."""
+    wa = set(re.findall(r"[a-z]+|\d+", a_title.lower())) - {"the", "a", "due", "and", "of"}
+    wb = set(re.findall(r"[a-z]+|\d+", b_title.lower())) - {"the", "a", "due", "and", "of"}
+    nums_a, nums_b = {w for w in wa if w.isdigit()}, {w for w in wb if w.isdigit()}
+    if nums_a and nums_b and not nums_a & nums_b:
+        return False
+    return len(wa & wb) >= max(1, min(len(wa), len(wb)) // 2)
+
+
 class School(Agent):
     name = "school"
     tier = "worker"
@@ -79,10 +108,10 @@ class School(Agent):
         return "added"
 
     def work(self):
-        if not CANVAS_ICS_URL:
+        if not CANVAS_ICS_URL and not SYLLABUS_PATH.exists():
             self.log("Not connected to Canvas yet: add your Canvas calendar feed link as CANVAS_ICS_URL in .env.", "warn")
             return {"added": 0, "connected": False}
-        events = parse_ics(self.fetch(CANVAS_ICS_URL, timeout=30, raw=True))
+        events = parse_ics(self.fetch(CANVAS_ICS_URL, timeout=30, raw=True)) if CANVAS_ICS_URL else []
         today, horizon = date.today(), date.today() + timedelta(days=LOOKAHEAD_DAYS)
         added = moved = 0
         for e in events:
@@ -98,6 +127,28 @@ class School(Agent):
                 start = max(today, e["due"] - timedelta(days=lead))
                 res = self.upsert(e["uid"] + "#study", f"Start studying: {label}", start.isoformat(), None, "high")
                 added += res == "added"; moved += res == "moved"
+        # Syllabus dates: professors often post assignments on Canvas late, so the syllabus is the
+        # early warning. Skip a syllabus item once Canvas has the same thing within 3 days of it.
+        syl_added = 0
+        for it in load_syllabus():
+            if not (today <= it["due"] <= today + timedelta(days=SYLLABUS_LOOKAHEAD)):
+                continue
+            if any(e["course"] and e["course"].replace(" ", "") in it["course"].replace(" ", "")
+                   and abs((e["due"] - it["due"]).days) <= 3 and same_item(it["title"], e["title"]) for e in events):
+                continue
+            label = f"{it['title']} ({it['course']}, from syllabus)"
+            kind = it.get("kind", "")
+            prio = "high" if kind in ("exam", "project", "paper") or EXAM.search(it["title"]) else "normal"
+            uid = f"syl:{it['course']}:{it['title']}:{it['due']}"
+            res = self.upsert(uid, f"Due: {label}", it["due"].isoformat(), None, prio)
+            syl_added += res == "added"
+            lead = 7 if kind == "exam" or EXAM.search(it["title"]) else 10 if kind in ("project", "paper") else 0
+            if lead:
+                start = max(today, it["due"] - timedelta(days=lead))
+                verb = "Start studying" if lead == 7 else "Start working on"
+                res = self.upsert(uid + "#start", f"{verb}: {label}", start.isoformat(), None, "high")
+                syl_added += res == "added"
+        added += syl_added
         week = sum(1 for e in events if today <= e["due"] <= today + timedelta(days=7))
         self.log(f"Read {len(events)} Canvas items: {week} due this week. Added {added} to-dos, moved {moved}.")
         self.send("planner", f"Canvas: {week} items due this week ({added} new, {moved} moved).")

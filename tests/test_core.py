@@ -205,3 +205,11 @@ def test_canvas_feed_parsing():
     ev = parse_ics(ics)
     assert ev[0]["title"] == "Homework 6" and ev[0]["course"] == "CDS 421" and ev[0]["time"]
     assert ev[1]["title"] == "Final Exam" and ev[1]["course"] == "MATH 203" and ev[1]["time"] is None
+
+
+def test_syllabus_matching():
+    from agents.school import same_item
+    assert same_item("Exam 2", "Midterm Exam 2")
+    assert not same_item("Exam 2", "Exam 3")
+    assert same_item("Final Project Report", "Final Project")
+    assert not same_item("Homework 5", "Quiz 2")
