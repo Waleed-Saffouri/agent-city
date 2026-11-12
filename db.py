@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS tasks (          -- what the Planner pulled out of th
 CREATE TABLE IF NOT EXISTS drafts (         -- what the Writer produced for approved jobs
   job_id TEXT PRIMARY KEY, ts REAL, folder TEXT, status TEXT, note TEXT
 );
+CREATE TABLE IF NOT EXISTS phone_log (      -- every phone alert sent (for the daily limit)
+  id INTEGER PRIMARY KEY, ts REAL, agent TEXT
+);
 CREATE TABLE IF NOT EXISTS findings (       -- what Sentinel finds (secret values are never stored)
   id TEXT PRIMARY KEY, ts REAL, severity TEXT, check_name TEXT, target TEXT, location TEXT,
   detail TEXT, fix TEXT, status TEXT DEFAULT 'open'

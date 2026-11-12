@@ -140,12 +140,15 @@ class Planner(Agent):
     def remind_due(self, now=None):
         """Called every minute by the scheduler: sends timed reminders that are due. No AI, free."""
         now = now or datetime.now()
-        rows = db.rows("""SELECT id, title FROM tasks WHERE status='open' AND reminded=0 AND due=? AND due_time IS NOT NULL
-                          AND due_time <= ?""", (now.date().isoformat(), now.strftime("%H:%M")))
+        today = now.date().isoformat()
+        rows = db.rows("""SELECT id, title FROM tasks WHERE status='open' AND reminded=0 AND due_time IS NOT NULL
+                          AND (due < ? OR (due = ? AND due_time <= ?))""", (today, today, now.strftime("%H:%M")))
+        from config import TELEGRAM_BOT_TOKEN
         for r in rows:
-            self.notify(f"Reminder: {r['title']}")
-            db.send(self.name, "you", f"Reminder: {r['title']}")
-            db.execute("UPDATE tasks SET reminded=1 WHERE id=?", (r["id"],))
+            sent = self.notify(f"Reminder: {r['title']}")
+            if sent or not TELEGRAM_BOT_TOKEN:   # quiet hours: try again next minute, so it goes out at 8am
+                db.send(self.name, "you", f"Reminder: {r['title']}")
+                db.execute("UPDATE tasks SET reminded=1 WHERE id=?", (r["id"],))
         return len(rows)
 
     def work(self):
@@ -161,7 +164,5 @@ class Planner(Agent):
         if s["this_week"]:
             parts.append(f"{len(s['this_week'])} more this week")
         msg = ", ".join(parts) or "Nothing due this week."
-        self.send("manager", f"To-dos: {msg}")
-        if s["today"] or s["overdue"]:
-            self.notify("Due today: " + "; ".join(t["title"] for t in (s["overdue"] + s["today"])[:5]))
+        self.send("manager", f"To-dos: {msg}")   # the Manager puts these in the one morning text
         return {"overdue": len(s["overdue"]), "today": len(s["today"]), "week": len(s["this_week"])}

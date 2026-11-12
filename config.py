@@ -140,3 +140,7 @@ DRAFTS_DIR = ROOT / "data" / "drafts"
 #   TELEGRAM_BOT_TOKEN=...   TELEGRAM_CHAT_ID=...
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+# So it doesn't over-text you: at most this many messages a day, and none during quiet hours
+# (reminders that come due during quiet hours wait until morning).
+PHONE_MAX_PER_DAY = int(os.environ.get("PHONE_MAX_PER_DAY", "5"))
+PHONE_QUIET_HOURS = (22, 8)   # 10pm to 8am

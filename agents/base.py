@@ -58,13 +58,23 @@ class Agent:
 
     def notify(self, text):
         """Send a phone alert through Telegram, if you've set it up. Only allowed agents may."""
-        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+        from datetime import datetime
+        from config import PHONE_MAX_PER_DAY, PHONE_QUIET_HOURS, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
         if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID) or not self.allowed("network", "api.telegram.org"):
+            return False
+        now = datetime.now()
+        start, end = PHONE_QUIET_HOURS
+        if now.hour >= start or now.hour < end:
+            return False   # quiet hours
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        if db.rows("SELECT COUNT(*) n FROM phone_log WHERE ts > ?", (midnight,))[0]["n"] >= PHONE_MAX_PER_DAY:
+            self.log("Skipped a phone alert: daily limit reached.", "info")
             return False
         data = urllib.parse.urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": text[:4000]}).encode()
         try:
             req = urllib.request.Request(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data=data)
             urllib.request.urlopen(req, timeout=20).close()  # nosec B310 - fixed https URL
+            db.execute("INSERT INTO phone_log(ts, agent) VALUES (?,?)", (time.time(), self.name))
             return True
         except Exception as e:
             self.log(f"Phone alert failed: {type(e).__name__}", "warn")  # never log the token

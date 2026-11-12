@@ -176,3 +176,15 @@ def test_planner_dates_and_rules():
     items = rule_split("fill the ibm form before friday. also email demetrius\nidea: trading tower")
     assert [i["kind"] for i in items] == ["task", "task", "idea"] and items[0]["project"] == "IBM"
     assert clean_items([{"title": "x", "due": "not a date"}, {"title": ""}])[0]["due"] is None
+
+
+def test_reminder_fires_once(tmp_path, monkeypatch):
+    import db, time as _t
+    from datetime import datetime
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "r.db"); db.init()
+    db.execute("INSERT INTO tasks(ts,title,due,due_time) VALUES (?,?,?,?)", (_t.time(), "Call mom", "2026-11-15", "18:00"))
+    from agents.planner import Planner
+    p = Planner()
+    assert p.remind_due(datetime(2026, 11, 15, 17, 59)) == 0
+    assert p.remind_due(datetime(2026, 11, 15, 18, 0)) == 1
+    assert p.remind_due(datetime(2026, 11, 15, 18, 1)) == 0
