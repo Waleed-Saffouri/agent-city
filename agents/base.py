@@ -1,6 +1,9 @@
 """What every agent has in common: a name, a tier, a log, a voice on the message board,
 and (optionally) a connection to Claude."""
+import json
 import os
+import shutil
+import subprocess
 import time
 
 import db
@@ -22,14 +25,28 @@ class Agent:
         return db.rows("SELECT * FROM messages WHERE recipient IN (?, 'all') AND ts > ? ORDER BY ts",
                        (self.name, since))
 
-    # ---- Optional AI brain. Works without an API key (agents fall back to rules). ----
+    # ---- AI brain. Three options, picked automatically:
+    #   1. "claude-cli": the Claude Code app logged in with your Claude subscription (no extra cost)
+    #   2. "api": an ANTHROPIC_API_KEY (pay per token)
+    #   3. none: agents fall back to simple rules
+    def brain(self):
+        choice = os.environ.get("BRAIN", "auto")
+        if choice in ("auto", "claude-cli") and shutil.which("claude"):
+            return "claude-cli"
+        if choice in ("auto", "api") and os.environ.get("ANTHROPIC_API_KEY"):
+            return "api"
+        return None
+
     def think(self, prompt, max_tokens=800):
-        key = os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
+        brain = self.brain()
+        if not brain:
             return None
         if db.tokens_today() >= DAILY_TOKEN_BUDGET:
             self.log("Daily token budget used up. Sleeping until tomorrow.", "budget")
             return None
+        if brain == "claude-cli":
+            return self._think_cli(prompt)
+        key = os.environ["ANTHROPIC_API_KEY"]
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=key)
@@ -42,6 +59,23 @@ class Agent:
             return msg.content[0].text
         except Exception as e:  # never let one agent crash the city
             self.log(f"AI call failed: {e}", "error")
+            return None
+
+    def _think_cli(self, prompt):
+        """Ask Claude through the Claude Code command line (`claude -p`), using your subscription."""
+        alias = {"manager": "opus", "worker": "haiku"}[self.tier]
+        try:
+            out = subprocess.run(
+                ["claude", "-p", prompt, "--model", alias, "--output-format", "json"],
+                capture_output=True, text=True, timeout=300)
+            data = json.loads(out.stdout)
+            u = data.get("usage", {})
+            used = sum(u.get(k, 0) or 0 for k in ("input_tokens", "output_tokens"))
+            db.execute("INSERT INTO token_usage(ts, agent, model, tokens) VALUES (?,?,?,?)",
+                       (time.time(), self.name, f"cli:{alias}", used))
+            return data.get("result") or None
+        except Exception as e:
+            self.log(f"Claude Code call failed: {e}", "error")
             return None
 
     def run(self):
