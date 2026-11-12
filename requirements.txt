@@ -1,3 +1,5 @@
 fastapi
 uvicorn
-anthropic  # optional: without ANTHROPIC_API_KEY the agents use rule-based fallbacks
+pip-audit
+pytest
+anthropic  # optional: only if you use an API key instead of Claude Code

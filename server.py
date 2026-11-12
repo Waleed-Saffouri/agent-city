@@ -12,9 +12,10 @@ from pydantic import BaseModel
 import db
 from agents.job_scout import JobScout
 from agents.manager import Manager
+from agents.sentinel import Sentinel
 from config import DAILY_TOKEN_BUDGET, ROOT
 
-AGENTS = {"scout": JobScout, "manager": Manager}
+AGENTS = {"scout": JobScout, "sentinel": Sentinel, "manager": Manager}
 app = FastAPI(title="Agent City")
 db.init()
 
@@ -45,6 +46,8 @@ def state():
         "messages": db.rows("SELECT * FROM messages ORDER BY ts DESC LIMIT 15"),
         "activity": db.rows("SELECT * FROM activity ORDER BY ts DESC LIMIT 30"),
         "tokens": {"used": db.tokens_today(), "budget": DAILY_TOKEN_BUDGET},
+        "findings": db.rows("""SELECT * FROM findings WHERE status='open' ORDER BY
+                               CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, ts DESC LIMIT 30"""),
     }
 
 
@@ -52,7 +55,7 @@ def state():
 def run_agent(name: str):
     if name == "morning":
         def go():
-            JobScout().run(); Manager().run()
+            JobScout().run(); Sentinel().run(); Manager().run()
     else:
         go = AGENTS[name]().run
     threading.Thread(target=go, daemon=True).start()

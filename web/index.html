@@ -27,6 +27,12 @@
   #info { margin-top:10px; min-height:44px; }
   .brief { white-space:pre-wrap; }
   #jobs { max-height:520px; overflow:auto; }
+  #sec { max-height:260px; overflow:auto; }
+  .find { border-top:1px solid var(--line); padding:8px 0; }
+  .find:first-child { border-top:0; }
+  .sev { font:9px 'Press Start 2P', monospace; padding:4px 6px; border-radius:5px; margin-right:6px; }
+  .sev.high { background:#ff6b7a33; color:var(--bad); } .sev.medium { background:#ffcf5c33; color:var(--accent); }
+  .sev.low { background:#6aa8ff33; color:var(--blue); }
   .job { border-top:1px solid var(--line); padding:10px 0; display:flex; gap:10px; align-items:flex-start; }
   .job:first-child { border-top:0; }
   .score { font:10px 'Press Start 2P', monospace; background:#26304f; color:var(--good); padding:6px; border-radius:6px; min-width:42px; text-align:center; }
@@ -73,6 +79,10 @@
       <div id="answer" class="answer small"></div>
     </div>
     <div class="card">
+      <h2>SECURITY <span id="seccount"></span></h2>
+      <div id="sec" class="small">Sentinel hasn't scanned yet.</div>
+    </div>
+    <div class="card">
       <h2>WAITING ON YOU <span id="pcount"></span></h2>
       <div id="jobs" class="small">Nothing yet.</div>
     </div>
@@ -86,9 +96,10 @@ let STATE = null, tick = 0;
 const B = [
   { id:"manager", label:"HQ",     x:270, y:110, w:110, h:150, color:"#6aa8ff" },
   { id:"scout",   label:"SCOUT",  x:80,  y:160, w:100, h:100, color:"#5ee6a8" },
-  { id:"inbox",   label:"INBOX",  x:470, y:170, w:90,  h:90,  color:"#ffcf5c", soon:true },
+  { id:"sentinel",label:"SENTINEL",x:440, y:140, w:90, h:120, color:"#ff9f43" },
+  { id:"inbox",   label:"INBOX",  x:545, y:200, w:50,  h:60,  color:"#ffcf5c", soon:true },
   { id:"school",  label:"SCHOOL", x:30,  y:290, w:90,  h:0,   color:"#c58cff", soon:true },
-  { id:"trader",  label:"TRADER", x:560, y:120, w:60,  h:140, color:"#ff6b7a", soon:true },
+  { id:"trader",  label:"TRADER", x:600, y:120, w:36,  h:140, color:"#ff6b7a", soon:true },
 ];
 const SOON = { inbox:"Inbox Watcher: reads recruiter replies & assessments (coming soon)",
                trader:"Trading Tower: your paper-trading bot vs. the S&P 500 (coming soon)",
@@ -113,7 +124,9 @@ function drawCity() {
       g.fillStyle="#4a5080"; g.font="8px 'Press Start 2P'"; g.fillText(b.label, b.x+4, 255-(b.h||40)/2+4);
       return;
     }
-    const working = status[b.id]==="working", err = status[b.id]==="error";
+    const working = status[b.id]==="working";
+    const alarm = b.id==="manager" && (STATE?.findings||[]).some(f=>f.severity==="high");
+    const err = status[b.id]==="error" || (alarm && tick%10<5);
     g.fillStyle = "#20244a"; g.fillRect(b.x, b.y, b.w, b.h);
     g.fillStyle = b.color; g.fillRect(b.x, b.y, b.w, 8);
     // windows: light up and flicker when the agent is working
@@ -125,6 +138,7 @@ function drawCity() {
     g.fillStyle="#e8e9f3"; g.font="9px 'Press Start 2P'";
     g.fillText(b.label, b.x+(b.w-b.label.length*9)/2, b.y-8);
     if (working) { g.fillStyle="#5ee6a8"; g.fillText("WORKING", b.x+(b.w-63)/2, b.y-22); }
+    else if (alarm) { g.fillStyle="#ff6b7a"; g.fillText("ALERT", b.x+(b.w-45)/2, b.y-22); }
   });
 
   // message lines: recent messages travel between buildings
@@ -157,7 +171,7 @@ function render() {
   const s = STATE;
   $("#tok").textContent = `${s.tokens.used.toLocaleString()} / ${s.tokens.budget.toLocaleString()}`;
   $("#tokbar").style.width = Math.min(100, 100*s.tokens.used/s.tokens.budget) + "%";
-  if (s.brief) $("#brief").textContent = s.brief;
+  if (s.brief) $("#brief").innerHTML = esc(s.brief).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^\s*[-•] /gm, "• ");
   $("#pcount").textContent = s.jobs.length ? `(${s.counts.pending||s.jobs.length})` : "";
   $("#jobs").innerHTML = s.jobs.length ? s.jobs.map(j => `
     <div class="job">
@@ -168,6 +182,13 @@ function render() {
       <div class="actions"><button onclick="act('${j.id}','approve')">✓</button>
         <button class="ghost" onclick="act('${j.id}','skip')">✕</button></div>
     </div>`).join("") : "Nothing waiting. 🎉";
+  const F = s.findings||[];
+  $("#seccount").textContent = F.length ? `(${F.length} open)` : "";
+  const scanned = s.agents.find(a=>a.name==="sentinel")?.last_result;
+  $("#sec").innerHTML = F.length ? F.map(f => `<div class="find"><span class="sev ${f.severity}">${f.severity.toUpperCase()}</span>
+      <b>${esc(f.check_name)}</b> · ${esc(f.target)} <span class="small">${esc(f.location)}</span>
+      <div class="small">${esc(f.detail)}</div><div class="small">Fix: ${esc(f.fix)}</div></div>`).join("")
+    : (scanned ? "All clear. No open security issues. 🛡️" : "Sentinel hasn't scanned yet.");
   $("#log").innerHTML = s.activity.map(a => `<div><span class="small">${ago(a.ts)}</span> <span class="tag">${esc(a.agent)}</span> ${esc(a.text)}</div>`).join("");
 }
 

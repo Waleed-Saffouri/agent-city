@@ -5,9 +5,10 @@ import os
 import shutil
 import subprocess
 import time
+import urllib.request
 
 import db
-from config import DAILY_TOKEN_BUDGET, MODELS
+from config import CLI_MODELS, DAILY_TOKEN_BUDGET, MODELS, OLLAMA_MODEL
 
 
 class Agent:
@@ -37,7 +38,26 @@ class Agent:
             return "api"
         return None
 
+    def _think_ollama(self, prompt):
+        """Free local model for worker-tier jobs. Returns None if Ollama isn't running."""
+        if not OLLAMA_MODEL:
+            return None
+        try:
+            req = urllib.request.Request("http://localhost:11434/api/generate",
+                                         data=json.dumps({"model": OLLAMA_MODEL, "prompt": prompt,
+                                                          "stream": False}).encode(),
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.load(r).get("response") or None
+        except Exception:
+            return None
+
     def think(self, prompt, max_tokens=800):
+        # Workers try the free local model first, so easy jobs cost nothing.
+        if self.tier == "worker":
+            local = self._think_ollama(prompt)
+            if local:
+                return local
         brain = self.brain()
         if not brain:
             return None
@@ -63,7 +83,7 @@ class Agent:
 
     def _think_cli(self, prompt):
         """Ask Claude through the Claude Code command line (`claude -p`), using your subscription."""
-        alias = {"manager": "opus", "worker": "haiku"}[self.tier]
+        alias = CLI_MODELS[self.tier]
         try:
             out = subprocess.run(
                 ["claude", "-p", prompt, "--model", alias, "--output-format", "json"],

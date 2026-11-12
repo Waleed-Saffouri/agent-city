@@ -1,7 +1,7 @@
 """Run agents from the command line.
 
     python run.py scout        # run one agent
-    python run.py morning      # scout, then manager (the daily routine)
+    python run.py morning      # scout, sentinel, then manager (the daily routine)
     python run.py schedule     # keep running and do the morning routine every day at 7:00
 """
 import sys
@@ -11,12 +11,13 @@ from datetime import datetime
 import db
 from agents.job_scout import JobScout
 from agents.manager import Manager
+from agents.sentinel import Sentinel
 
-AGENTS = {"scout": JobScout, "manager": Manager}
+AGENTS = {"scout": JobScout, "sentinel": Sentinel, "manager": Manager}
 
 
 def morning():
-    for name in ("scout", "manager"):
+    for name in ("scout", "sentinel", "manager"):  # manager last, so the brief sees everything
         AGENTS[name]().run()
 
 

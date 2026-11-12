@@ -34,6 +34,8 @@ class Manager(Agent):
             "errors": db.rows("SELECT agent FROM agent_state WHERE status='error'"),
             "tracker": tracker_stats(),
             "tokens": db.tokens_today(),
+            "security": {r["severity"]: r["n"] for r in db.rows(
+                "SELECT severity, COUNT(*) n FROM findings WHERE status='open' GROUP BY severity")},
         }
 
     def work(self):
@@ -61,6 +63,13 @@ class Manager(Agent):
         if g["tracker"]:
             t = g["tracker"]
             lines.append("• Applications: " + ", ".join(f"{v} {k.lower()}" for k, v in t.items()))
+        sec = g.get("security") or {}
+        if sec.get("high"):
+            lines.append(f"• 🚨 Sentinel found {sec['high']} high-risk security issue(s). Check the Security panel.")
+        elif sec:
+            lines.append(f"• Security: no high-risk issues ({sec.get('medium', 0)} medium, {sec.get('low', 0)} low).")
+        else:
+            lines.append("• Security: all clear.")
         for e in g["errors"]:
             lines.append(f"• ⚠️ {e['agent']} crashed and needs a look.")
         lines.append(f"• Tokens used today: {g['tokens']:,}")

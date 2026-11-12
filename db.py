@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS agent_state (   -- lets the city light up working bui
 CREATE TABLE IF NOT EXISTS token_usage (
   id INTEGER PRIMARY KEY, ts REAL, agent TEXT, model TEXT, tokens INTEGER
 );
+CREATE TABLE IF NOT EXISTS findings (       -- what Sentinel finds (secret values are never stored)
+  id TEXT PRIMARY KEY, ts REAL, severity TEXT, check_name TEXT, target TEXT, location TEXT,
+  detail TEXT, fix TEXT, status TEXT DEFAULT 'open'
+);
 """
 
 
