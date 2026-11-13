@@ -291,3 +291,20 @@ def test_applier_searchable_dropdown(tmp_path):
         chosen = page.text_content("#chosen")
         b.close()
     assert chosen == "Male"
+
+
+def test_applier_shadow_dom_form(tmp_path):
+    import pytest
+    pw = pytest.importorskip("playwright.sync_api")
+    from agents.applier import fill_form
+    cv = tmp_path / "cv.pdf"; cv.write_bytes(b"%PDF-1.4 test")
+    with pw.sync_playwright() as p:
+        b = p.chromium.launch(); page = b.new_page()
+        page.goto((Path(__file__).parent / "fixtures" / "shadow_form.html").as_uri())
+        filled, _ = fill_form(page, {"first_name": "Ada", "email": "a@b.c"}, cv, None, "Hello team")
+        got = page.evaluate("""() => { const r = document.querySelector('my-form').shadowRoot,
+             a = document.querySelector('auto-box').shadowRoot;
+             return {fn: r.getElementById('fn').value, em2: r.getElementById('em2').value, msg: r.getElementById('msg').value,
+                     resume: r.getElementById('up1').files.length, autofill: a.getElementById('up0').files.length}; }""")
+        b.close()
+    assert got == {"fn": "Ada", "em2": "a@b.c", "msg": "Hello team", "resume": 1, "autofill": 0}

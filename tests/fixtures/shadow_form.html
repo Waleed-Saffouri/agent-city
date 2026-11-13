@@ -1,0 +1,13 @@
+<html><body>
+<h2>Easy Apply</h2><p>Choose an option to autocomplete your application.</p>
+<auto-box></auto-box>
+<my-form></my-form>
+<script>
+customElements.define('auto-box', class extends HTMLElement { connectedCallback(){ const r=this.attachShadow({mode:'open'});
+  r.innerHTML='<div><label for="up0">Choose a file or drop it here</label><input id="up0" type="file"></div>'; }});
+customElements.define('my-form', class extends HTMLElement { connectedCallback(){ const r=this.attachShadow({mode:'open'});
+  r.innerHTML=`<label for="fn">First name*</label><input id="fn">
+   <label for="em">Email*</label><input id="em" type="email"><label for="em2">Confirm your email*</label><input id="em2" type="email">
+   <section><h3>Resume *</h3><div><label for="up1">Choose a file or drop it here</label><input id="up1" type="file"></div></section>
+   <label for="msg">Let the company know about your interest working there</label><textarea id="msg"></textarea>`; }});
+</script></body></html>

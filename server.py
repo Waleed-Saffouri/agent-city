@@ -38,6 +38,7 @@ from agents.applier import Applier  # noqa: E402
 AGENTS = {"applier": Applier, "scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": School, "planner": Planner, "manager": Manager}
 app = FastAPI(title="Agent City")
 db.init()
+db.put("applier_open", "")   # no form windows survive a restart
 
 
 def add_to_tracker(job_id):
@@ -140,8 +141,8 @@ def draft_letter(job_id: str):
 def apply(job_id: str):
     """Open the company's form on this Mac and fill it in. Never submits."""
     from agents.applier import Applier
-    if db.get("applier_open"):
-        db.put("applier_again", "1")   # a form is already open: fill whatever page it's on now
+    if db.get("applier_open") == job_id:
+        db.put("applier_again", "1")   # this job's form is already open: fill whatever page it's on now
         return {"ok": True, "again": True}
     threading.Thread(target=Applier().fill, args=(job_id,), daemon=True).start()
     return {"ok": True}

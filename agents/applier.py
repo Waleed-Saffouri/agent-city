@@ -102,34 +102,46 @@ def load_me():
 
 
 def label_texts(page):
-    """Every form field with the text a person would read next to it."""
+    """Every form field with the text a person would read next to it. Looks inside shadow DOM too
+    (SmartRecruiters and some others build their forms from web components)."""
     return page.evaluate("""() => {
-      const out = [];
-      const fields = document.querySelectorAll('input, textarea, select');
-      fields.forEach((el, i) => {
-        if (el.type === 'hidden' || el.disabled) return;
-        let text = '';
-        if (el.id) { const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`); if (l) text = l.innerText; }
-        if (!text) { const l = el.closest('label'); if (l) text = l.innerText; }
-        if (!text) text = el.getAttribute('aria-label') || '';
-        if (!text) { const box = el.closest('div, fieldset, li'); if (box) text = (box.querySelector('label, legend') || {}).innerText || ''; }
-        if (!text) text = el.placeholder || el.name || '';
-        // for radio buttons, the question is on the group, the answer is on the button
-        let group = '';
-        if (el.type === 'radio' || el.type === 'checkbox') {
-          const fs = el.closest('fieldset'); const rg = el.closest('[role=radiogroup], [role=group]');
-          group = (fs && (fs.querySelector('legend') || {}).innerText) || (rg && (rg.getAttribute('aria-label') ||
-                  (document.getElementById(rg.getAttribute('aria-labelledby') || '') || {}).innerText)) || '';
-          if (!group) { let p = el.parentElement; for (let k = 0; k < 4 && p; k++, p = p.parentElement) {
-            const q = p.querySelector('label:not(:has(input)), legend, p, span.question'); if (q && !q.contains(el)) { group = q.innerText; break; } } }
+      const out = []; let i = 0;
+      const textNear = (el, own) => {      // the heading around an upload box ("Resume *", "Apply with Indeed")
+        const key = /resume|résumé|\bcv\b|curriculum|cover|autocomplete|apply with|indeed|linkedin profile|import/i;
+        let p = el.parentElement;
+        for (let k = 0; k < 8 && p; k++, p = p.parentElement || (p.getRootNode() && p.getRootNode().host)) {
+          const t = (p.innerText || '').trim();
+          if (t && t !== own.trim() && key.test(t)) return t.slice(0, 300);
         }
-        const combo = el.getAttribute('role') === 'combobox' || el.getAttribute('aria-autocomplete') === 'list' ||
-                      /select__input|react-select/.test(el.className + ' ' + (el.id || ''));
-        el.setAttribute('data-ac-idx', i);
-        out.push({idx: i, tag: el.tagName.toLowerCase(), type: el.type || '', text: text.trim().slice(0, 200),
-                  group: (group || '').trim().slice(0, 200), combo, checked: !!el.checked,
-                  value: el.value || '', accept: el.accept || ''});
-      });
+        return '';
+      };
+      const visit = (root) => {
+        root.querySelectorAll('input, textarea, select').forEach((el) => {
+          if (el.type === 'hidden' || el.disabled) return;
+          let text = '';
+          if (el.id) { const l = root.querySelector(`label[for="${CSS.escape(el.id)}"]`); if (l) text = l.innerText; }
+          if (!text) { const l = el.closest('label'); if (l) text = l.innerText; }
+          if (!text) text = el.getAttribute('aria-label') || '';
+          if (!text) { const box = el.closest('div, fieldset, li'); if (box) text = (box.querySelector('label, legend') || {}).innerText || ''; }
+          if (!text) text = el.placeholder || el.name || '';
+          let group = '';
+          if (el.type === 'radio' || el.type === 'checkbox') {
+            const fs = el.closest('fieldset'); const rg = el.closest('[role=radiogroup], [role=group]');
+            group = (fs && (fs.querySelector('legend') || {}).innerText) || (rg && rg.getAttribute('aria-label')) || '';
+            if (!group) { let p = el.parentElement; for (let k = 0; k < 4 && p; k++, p = p.parentElement) {
+              const q = p.querySelector('label:not(:has(input)), legend, p'); if (q && !q.contains(el)) { group = q.innerText; break; } } }
+          }
+          const context = (el.type === 'file' || /choose a file|drop it here|upload/i.test(text)) ? textNear(el, text) : '';
+          const combo = el.getAttribute('role') === 'combobox' || el.getAttribute('aria-autocomplete') === 'list' ||
+                        /select__input|react-select/.test(el.className + ' ' + (el.id || ''));
+          el.setAttribute('data-ac-idx', i);
+          out.push({idx: i++, tag: el.tagName.toLowerCase(), type: el.type || '', text: text.trim().slice(0, 200),
+                    group: (group || '').trim().slice(0, 200), context: context.slice(0, 300), combo,
+                    checked: !!el.checked, value: el.value || '', accept: el.accept || ''});
+        });
+        root.querySelectorAll('*').forEach((n) => { if (n.shadowRoot) visit(n.shadowRoot); });
+      };
+      visit(document);
       return out;
     }""")
 
@@ -177,6 +189,8 @@ def fill_form(page, me, cv_path, letter_path, letter_text, job_salary=""):
     radio_done = set()
     for f in label_texts(page):
         label = re.sub(r"\s+", " ", f["text"]).lower().replace("*", "").strip()
+        if re.search(r"country/region or code", label):
+            continue   # phone country picker: leave the default
         question = re.sub(r"\s+", " ", f["group"] or f["text"]).lower().replace("*", "").strip()
         sel = f'[data-ac-idx="{f["idx"]}"]'
         short = (f["group"] or f["text"]).split("\n")[0][:60]
@@ -186,12 +200,16 @@ def fill_form(page, me, cv_path, letter_path, letter_text, job_salary=""):
             continue
         try:
             if f["type"] == "file":
-                if re.search(r"cover", label) and letter_path:
+                where = (label + " " + (f.get("context") or "")).lower()
+                if re.search(r"autocomplete|apply with|import", where):
+                    continue   # "upload to autofill" boxes: skip, we fill the fields ourselves
+                if re.search(r"cover", where) and letter_path and "Cover letter (file)" not in filled:
                     page.set_input_files(sel, str(letter_path)); filled.append("Cover letter (file)")
-                elif re.search(r"resume|résumé|cv\b|curriculum", label) and cv_path:
+                elif re.search(r"resume|résumé|\bcv\b|curriculum", where) and cv_path and "CV" not in filled:
                     page.set_input_files(sel, str(cv_path)); filled.append("CV")
                 continue
-            if f["tag"] == "textarea" and re.search(r"cover letter", label) and letter_text:
+            if f["tag"] == "textarea" and letter_text and re.search(
+                    r"cover letter|message to the hiring|interest (in )?working|why (do you want|are you interested)|tell us about yourself", label):
                 page.fill(sel, letter_text); filled.append("Cover letter (text)")
                 continue
             if f["type"] == "radio":   # pick the button whose own label is the answer
@@ -288,15 +306,22 @@ class Applier(Agent):
             page = browser.new_page()
             page.goto(job["url"], wait_until="domcontentloaded", timeout=60000)
             time.sleep(2)
-            for label in ("Apply for this job", "Apply now", "Apply", "I'm interested"):   # get past the description
+            context = page.context
+            for label in ("Apply for this job", "Apply now", "I'm interested", "Apply"):   # get past the description
                 btn = page.get_by_role("button", name=re.compile(label, re.I))
                 if not btn.count():
                     btn = page.get_by_role("link", name=re.compile(rf"^\s*{label}\s*$", re.I))
+                btn = btn.filter(has_not_text=re.compile(r"indeed|linkedin|seek|glassdoor", re.I))
                 if btn.count():
                     try:
-                        btn.first.click(timeout=3000); time.sleep(2); break
+                        btn.first.click(timeout=3000); time.sleep(3); break
                     except Exception:
                         pass
+            page = context.pages[-1]          # the form may open in a new tab
+            try:
+                page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
             filled, skipped = fill_form(page, me, cv, letter_pdf, letter_text, job.get("salary", ""))
             page.evaluate(BANNER_JS)
             self.log(f"Filled {len(filled)} fields on the {job['company']} form"
@@ -305,19 +330,26 @@ class Applier(Agent):
                 self.log("This site wants you to sign in or click through first. Do that, then press Fill again.", "warn")
             db.set_state(self.name, "idle", {"filled": len(filled), "company": job["company"]})
             db.put("applier_open", job_id)
-            # keep the window; "Fill again" (after you sign in) fills whatever page is showing now
-            while browser.is_connected():
+            # Keep the window; "Fill application" again (after you sign in or press Next) fills whatever
+            # page is showing. Closing the window ends the session (on a Mac, Chrome may stay running).
+            def open_pages():
+                return [pg for ctx in browser.contexts for pg in ctx.pages if not pg.is_closed()] if browser.is_connected() else []
+            while open_pages():
                 if db.get("applier_again") == "1":
                     db.put("applier_again", "0")
+                    current = open_pages()[-1]
                     try:
-                        current = browser.contexts[0].pages[-1]
                         more, _ = fill_form(current, me, cv, letter_pdf, letter_text, job.get("salary", ""))
                         current.evaluate(BANNER_JS)
-                        self.log(f"Filled {len(more)} more fields.")
+                        self.log(f"Filled {len(more)} more fields on this page.")
                     except Exception as e:
-                        self.log(f"Couldn't fill that page: {e}", "warn")
+                        self.log(f"Couldn't fill that page: {str(e)[:120]}", "warn")
                 time.sleep(1)
             db.put("applier_open", "")
+            try:
+                browser.close()
+            except Exception:
+                pass
         return {"ok": True, "filled": filled, "skipped": skipped}
 
     def work(self):
