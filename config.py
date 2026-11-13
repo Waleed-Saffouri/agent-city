@@ -97,10 +97,10 @@ LOCATION_TIERS = {
     25: ["new york", "nyc", "manhattan", "brooklyn", "jersey city", "hoboken"] + DMV_PLACES,
     15: ["austin", "dallas", "houston", "plano", "irving", "fort worth", "frisco",             # Texas
          "raleigh", "durham", "charlotte", "chapel hill", "research triangle", "cary, nc",    # NC
-         "remote", "london", "chicago", "boston",
+         "remote in usa", "remote in us", "us remote", "remote - us", "remote, us", "london", "chicago", "boston",
          ", ny", "long island", "stamford", "newark", "baltimore", "columbia, md"],                # near NYC / DC
     0:  ["richmond", "philadelphia", "atlanta", "miami", "seattle", "san francisco", "los angeles", "denver",
-         "united states", "us remote"],
+         "united states", "remote"],   # plain "remote" with no country: neutral
 }
 OTHER_LOCATION_POINTS = -20
 

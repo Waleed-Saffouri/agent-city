@@ -158,7 +158,9 @@ class Sentinel(Agent):
         is_repo = (Path(target) / ".git").exists()
         if tool("gitleaks"):
             with tempfile.TemporaryDirectory() as tmp:
-                for mode in (["git"] if is_repo else []) + ["dir"]:
+                # In a git repo, scan what git holds (every commit). Files git ignores, like .env, are
+                # where secrets belong, so the folder scan is only for projects without git.
+                for mode in (["git"] if is_repo else ["dir"]):
                     rep = Path(tmp) / f"{mode}.json"
                     subprocess.run([tool("gitleaks"), mode, str(target), "--no-banner", "--redact",
                                     "-f", "json", "-r", str(rep)], capture_output=True, timeout=600)

@@ -38,6 +38,7 @@ US_STATES = ("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI 
 def location_ok(locs):
     """True if any location is in the US, remote, or London (where you said you'd go)."""
     text = " | ".join(locs)
+    text = re.sub(r"(?i)remote in (canada|uk|india|mexico|brazil|europe)[^|;]*", "", text)  # not US-remote
     if re.search(r"(?i)united states|\busa?\b|\bus-|remote|london|new york|nyc", text):
         return True
     return any(re.search(rf",\s*{st}\b", text) for st in US_STATES)
@@ -124,6 +125,8 @@ def location_points(locs):
     """Points for the best location in a posting, and which one it was."""
     best, where = None, ""
     for loc in locs or []:
+        if re.search(r"(?i)remote in (canada|uk|india|mexico|brazil|europe)", loc):
+            continue   # remote, but only from another country
         low = loc.lower()
         pts = next((p for p, keys in sorted(LOCATION_TIERS.items(), reverse=True) if any(k in low for k in keys)),
                    OTHER_LOCATION_POINTS)
@@ -242,6 +245,21 @@ class JobScout(Agent):
     tier = "worker"
     role = "Finds new jobs every morning and queues the best ones for your approval."
 
+    def recheck_pending(self):
+        """When your rules change, jobs already waiting are re-checked against them."""
+        dropped = 0
+        for r in db.rows("SELECT id, company, title, locations, track FROM jobs WHERE status='pending'"):
+            locs = [x.strip() for x in (r["locations"] or "").split(";") if x.strip()]
+            bad = (any(b in r["company"].lower() for b in AVOID_COMPANIES)
+                   or any(t in r["title"].lower() for t in SKIP_TITLE)
+                   or not location_ok(locs)
+                   or (r["track"] == "internship" and not commutable(locs)))
+            if bad:
+                db.execute("UPDATE jobs SET status='expired' WHERE id=?", (r["id"],))
+                dropped += 1
+        if dropped:
+            self.log(f"Removed {dropped} waiting job{'s' if dropped != 1 else ''} that no longer fit your rules.")
+
     def expire_closed(self, feeds, failed_boards):
         """Postings that were taken down since yesterday leave your list (only for sources read today)."""
         active = {str(j.get("id")) for _, listing in feeds for j in listing if j.get("active", True)}
@@ -339,6 +357,7 @@ class JobScout(Agent):
                  + (f" Couldn't reach: {', '.join(failed[:5])}{'…' if len(failed) > 5 else ''}." if failed else ""),
                  "warn" if failed else "info")
         self.expire_closed(feeds, failed)
+        self.recheck_pending()
         seen_titles = set()
         for source, listings in feeds:
             for j in listings:

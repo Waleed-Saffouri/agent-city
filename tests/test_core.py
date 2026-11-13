@@ -217,3 +217,10 @@ def test_syllabus_matching():
     assert not same_item("Exam 2", "Exam 3")
     assert same_item("Final Project Report", "Final Project")
     assert not same_item("Homework 5", "Quiz 2")
+
+
+def test_foreign_remote_not_counted():
+    from agents.job_scout import location_ok, location_points
+    assert not location_ok(["Remote in Canada"])
+    assert location_points(["Remote in Canada"])[0] < 0
+    assert location_points(["Remote in USA"])[0] == 15
