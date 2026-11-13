@@ -17,7 +17,7 @@ import db
 from agents import guard
 from agents.base import Agent
 from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, INTERNSHIP_TERMS, JOB_SOURCES, SPRING_BONUS,
-                    LOCATION_TIERS, OTHER_LOCATION_POINTS, DMV_PLACES,
+                    LOCATION_TIERS, OTHER_LOCATION_POINTS, DMV_PLACES, MY_GPA, MAX_YEARS_REQUIRED,
                     MAX_AGE_DAYS, OFF_TOPIC, SKIP_TITLE, TITLE_KEYWORDS)
 
 PROFILE = ("Waleed: Computational & Data Sciences B.S. (GMU, May 2027) with a finance minor. "
@@ -54,7 +54,7 @@ def from_greenhouse(slug, data):
         except ValueError:
             ts = 0
         content = re.sub(r"<[^>]+>", " ", html.unescape(j.get("content") or ""))
-        out.append({"salary": salary_from(content),
+        out.append({"salary": salary_from(content), "req": requirements_from(content),
                     "id": f"gh-{slug}-{j['id']}", "company_name": (j.get("company_name") or slug).strip(),
                     "title": j.get("title", ""), "locations": [(j.get("location") or {}).get("name", "")],
                     "url": j.get("absolute_url", ""), "date_posted": ts, "active": True,
@@ -100,6 +100,44 @@ def salary_from(text):
         elif 30_000 <= a <= 600_000:
             return f"${a/1000:.0f}K–${b/1000:.0f}K"
     return ""
+
+
+def requirements_from(text):
+    """Hard requirements in a posting: minimum years of experience and minimum GPA (None if not stated)."""
+    t = re.sub(r"\s+", " ", text or "")
+    years = None
+    for m in re.finditer(r"(?i)(\d{1,2})\s*(?:\+|-|–|to)?\s*(?:\d{1,2})?\s*\+?\s*years?(?: of)?(?: \w+){0,4}? (?:experience|work)", t):
+        start = max(0, m.start() - 40)
+        if re.search(r"(?i)\b(0|zero)\s*(-|–|to)\s*$", t[start:m.start()]):   # "0-4 years" style
+            continue
+        lo = int(m[1])
+        if re.match(r"(?i)0\s*(-|–|to)", t[m.start():m.end()]):
+            lo = 0
+        years = lo if years is None else min(years, lo)
+    gpa = None
+    m = re.search(r"(?i)(?:minimum|min\.?|at least)\s*(?:a\s*)?(?:cumulative\s*)?(?:gpa|grade point average)?\s*(?:of\s*)?([23]\.\d{1,2})"
+                  r"|([23]\.\d{1,2})\s*(?:\+|or (?:higher|above|better))?\s*(?:cumulative\s*)?(?:gpa|grade point average)", t)
+    if m:
+        gpa = float(m[1] or m[2])
+    return {"years": years, "gpa": gpa}
+
+
+def blocked_by_requirements(req):
+    """Plain-English reason you'd be screened out, or None."""
+    if req.get("years") is not None and req["years"] > MAX_YEARS_REQUIRED:
+        return f"asks for {req['years']}+ years of experience"
+    if req.get("gpa") and req["gpa"] > MY_GPA + 1e-9:
+        return f"requires a {req['gpa']:.2f} GPA (you have {MY_GPA:.2f})"
+    return None
+
+
+def workday_api(url):
+    """Workday pages are built by JavaScript, so read the same posting from Workday's JSON instead."""
+    m = re.match(r"https://([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([^/]+)/(job/.+?)(?:\?.*)?$", url or "")
+    if not m:
+        return None
+    tenant, dc, site, path = m.groups()
+    return f"https://{tenant}.{dc}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/{path}"
 
 
 def salary_from_page(page):
@@ -276,23 +314,35 @@ class JobScout(Agent):
             self.log(f"Removed {gone} job{'s' if gone != 1 else ''} that were taken down.")
 
     def add_salaries(self, rows, limit=25):
-        """Open the best postings that don't list pay yet and look for a salary on the page."""
-        found, out = 0, []
-        need = {r[0] for r in sorted(rows, key=lambda r: -r[8]) if not r[11]}
-        need = set(list(need)[:limit])
+        """Open the best postings (on allowed job sites) and read what the list doesn't say:
+        the pay, and hard requirements like years of experience or a minimum GPA."""
+        found, dropped, opened, out = 0, [], 0, []
+        top = {r[0] for r in sorted(rows, key=lambda r: -r[8])[:limit]}
         for r in rows:
-            host = urllib.parse.urlparse(r[5]).hostname or "" if r[5] else ""
-            if r[0] in need and host and self.may("network", host):  # only sites on the allowed list
+            host = (urllib.parse.urlparse(r[5]).hostname or "") if r[5] else ""
+            if r[0] in top and host and self.may("network", host):  # only sites on the allowed list
                 try:
-                    pay = salary_from_page(self.fetch(r[5], timeout=15, raw=True))
+                    api = workday_api(r[5])
+                    if api:
+                        info = self.fetch(api, timeout=15).get("jobPostingInfo", {})
+                        page = info.get("jobDescription", "") + " " + str(info.get("location", ""))
+                    else:
+                        page = self.fetch(r[5], timeout=15, raw=True)
+                    opened += 1
                 except Exception:
-                    pay = ""   # site not on the list, blocked, or slow: just skip it
+                    page = ""   # blocked or slow: keep the job, just without the extra info
+                why = blocked_by_requirements(requirements_from(re.sub(r"<[^>]+>", " ", html.unescape(page))))
+                if why:
+                    dropped.append(f"{r[2]} ({why})")
+                    continue
+                pay = "" if r[11] else salary_from_page(page)
                 if pay:
                     found += 1
                     r = r[:9] + (json.dumps(json.loads(r[9]) + [f"pays {pay}"]),) + r[10:11] + (pay,)
             out.append(r)
-        if need:
-            self.log(f"Found pay for {found} of the {len(need)} top postings that didn't list it.")
+        if opened:
+            self.log(f"Read {opened} full postings: found pay for {found}, dropped {len(dropped)} you'd be "
+                     f"screened out of" + (f": {'; '.join(dropped[:4])}" if dropped else "."))
         return out
 
     def ai_rerank(self, rows):
@@ -382,6 +432,8 @@ class JobScout(Agent):
                 if any(a and (a in j["company_name"].lower() or j["company_name"].lower() in a)
                        for a in applied):
                     continue  # you've already applied there
+                if blocked_by_requirements(j.get("req") or {}):
+                    continue   # you'd be screened out on paper (years of experience or GPA)
                 score, reasons = score_job(j, src, liked, disliked)
                 if score < 50:
                     continue

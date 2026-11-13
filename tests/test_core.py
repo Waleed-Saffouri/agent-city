@@ -224,3 +224,21 @@ def test_foreign_remote_not_counted():
     assert not location_ok(["Remote in Canada"])
     assert location_points(["Remote in Canada"])[0] < 0
     assert location_points(["Remote in USA"])[0] == 15
+
+
+def test_requirements_reader():
+    from agents.job_scout import requirements_from, blocked_by_requirements
+    r = requirements_from("Minimum requirements: 3–5 years of work experience in B2B sales strategy")
+    assert r["years"] == 3 and blocked_by_requirements(r)
+    r = requirements_from("Minimum 3.2 cumulative collegiate grade point average. 0-4 years of experience in investment management")
+    assert r["gpa"] == 3.2 and r["years"] in (0, None) and "GPA" in blocked_by_requirements(r)
+    r = requirements_from("You are graduating in 2027. Knowledge of Python and SQL.")
+    assert blocked_by_requirements(r) is None
+    assert requirements_from("1+ years of experience with SQL")["years"] == 1
+
+
+def test_workday_api_url():
+    from agents.job_scout import workday_api
+    u = "https://pimco.wd1.myworkdayjobs.com/pimco-careers/job/New-York-NY-USA/Analyst-Associate--Client-Solutions---Analytics_R107095"
+    assert workday_api(u) == ("https://pimco.wd1.myworkdayjobs.com/wday/cxs/pimco/pimco-careers/job/New-York-NY-USA/"
+                              "Analyst-Associate--Client-Solutions---Analytics_R107095")

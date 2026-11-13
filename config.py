@@ -76,6 +76,10 @@ OFF_TOPIC = {
 # Simplify's job categories that fit you best.
 GOOD_CATEGORIES = {"AI/ML/Data": 8, "Quant": 10, "Product": 0}
 
+# What you bring, so the Scout can skip postings you don't meet on paper.
+MY_GPA = float(os.environ.get("MY_GPA", "3.12"))
+MAX_YEARS_REQUIRED = 2   # postings that require 3+ years of experience are dropped
+
 # Your two goals:
 #   1. a Spring 2027 internship (Jan–May, while you're still a student)
 #   2. a full-time job starting after you graduate in May 2027
