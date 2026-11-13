@@ -34,7 +34,8 @@ def _git_head():
 
 RUNNING_VERSION = _git_head()   # the code this server process started with
 
-AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": School, "planner": Planner, "manager": Manager}
+from agents.applier import Applier  # noqa: E402
+AGENTS = {"applier": Applier, "scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": School, "planner": Planner, "manager": Manager}
 app = FastAPI(title="Agent City")
 db.init()
 
@@ -133,6 +134,17 @@ def draft_letter(job_id: str):
     if not d:
         raise HTTPException(404, "No draft for that job yet.")
     return FileResponse(Path(d[0]["folder"]) / "cover_letter.html")
+
+
+@app.post("/api/apply/{job_id}")
+def apply(job_id: str):
+    """Open the company's form on this Mac and fill it in. Never submits."""
+    from agents.applier import Applier
+    if db.get("applier_open"):
+        db.put("applier_again", "1")   # a form is already open: fill whatever page it's on now
+        return {"ok": True, "again": True}
+    threading.Thread(target=Applier().fill, args=(job_id,), daemon=True).start()
+    return {"ok": True}
 
 
 @app.post("/api/findings/{fid}/dismiss")

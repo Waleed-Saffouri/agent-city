@@ -21,6 +21,7 @@ if [ ! -d .venv ]; then
   echo "Setting up (about a minute)..."
   python3 -m venv .venv
   ./.venv/bin/pip install -q -r requirements.txt
+  ./.venv/bin/python -m playwright install chromium >/dev/null 2>&1 || true   # browser for the Applier
 fi
 mkdir -p data "$HOME/Library/LaunchAgents"
 pkill -f "uvicorn server:app" 2>/dev/null || true      # stop a copy started with ./start.sh

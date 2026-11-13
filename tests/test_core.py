@@ -242,3 +242,20 @@ def test_workday_api_url():
     u = "https://pimco.wd1.myworkdayjobs.com/pimco-careers/job/New-York-NY-USA/Analyst-Associate--Client-Solutions---Analytics_R107095"
     assert workday_api(u) == ("https://pimco.wd1.myworkdayjobs.com/wday/cxs/pimco/pimco-careers/job/New-York-NY-USA/"
                               "Analyst-Associate--Client-Solutions---Analytics_R107095")
+
+
+def test_applier_fills_greenhouse_style_form(tmp_path):
+    import pytest
+    pw = pytest.importorskip("playwright.sync_api")
+    from agents.applier import fill_form
+    cv = tmp_path / "cv.pdf"; cv.write_bytes(b"%PDF-1.4 test")
+    me = {"first_name": "Ada", "last_name": "Lovelace", "email": "a@b.c", "phone": "555", "linkedin": "https://l.in/a",
+          "school": "GMU", "work_authorized": True, "needs_sponsorship": False}
+    with pw.sync_playwright() as p:
+        b = p.chromium.launch(); page = b.new_page()
+        page.goto((Path(__file__).parent / "fixtures" / "greenhouse_form.html").as_uri())
+        filled, skipped = fill_form(page, me, cv, cv, "")
+        vals = page.evaluate("[...document.querySelectorAll('select')].map(e => e.value)")
+        b.close()
+    assert "CV" in filled and vals[:2] == ["Yes", "No"] and vals[2] == ""   # gender left for the person
+    assert not any("submit" in x.lower() for x in filled)

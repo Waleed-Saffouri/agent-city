@@ -9,6 +9,7 @@ if [ ! -d .venv ]; then
   echo "First run: setting up (about a minute)..."
   python3 -m venv .venv
   ./.venv/bin/pip install -q -r requirements.txt
+  ./.venv/bin/python -m playwright install chromium >/dev/null 2>&1 || true   # browser for the Applier
   ./.venv/bin/python run.py protect . >/dev/null || true
 fi
 [ -f profile/cv.md ] || echo "Tip: copy your CV to profile/cv.md so the Writer can draft cover letters."

@@ -59,6 +59,7 @@ def update_available():
         return False
     if (ROOT / "requirements.txt").read_text() != old_reqs:
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(ROOT / "requirements.txt")])
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], capture_output=True)  # for the Applier
     db.log("manager", "info", f"Updated Agent City to the newest version ({behind} change(s)). Restarting.")
     return True
 

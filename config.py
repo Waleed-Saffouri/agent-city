@@ -134,7 +134,8 @@ PERMISSIONS = {
     "sentinel": {"network": [], "ai": []},   # scanners run locally; Sentinel never needs AI
     "writer":   {"network": ["boards-api.greenhouse.io"], "ai": ["think"]},
     "planner":  {"network": ["api.telegram.org"], "ai": ["think"]},
-    "school":   {"network": ["canvas.gmu.edu", "*.instructure.com"], "ai": []},   # read-only calendar feed
+    "school":   {"network": ["canvas.gmu.edu", "*.instructure.com"], "ai": []},
+    "applier":  {"network": [], "ai": []},   # drives a visible browser you watch; never submits   # read-only calendar feed
 }
 
 # ---- Writer ----

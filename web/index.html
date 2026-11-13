@@ -467,7 +467,8 @@ const VIEWS = {
         <div class="meta"><b>${esc(d.company)}</b><div class="sub">${esc(d.title)}</div>
           ${d.note ? `<div class="sub">${esc(d.note)}</div>` : ""}
           <div class="fix" style="margin-top:6px"><a href="/drafts/${encodeURIComponent(d.job_id)}" target="_blank" rel="noopener">open the cover letter</a> · <a href="${esc(d.url)}" target="_blank" rel="noopener">job posting</a></div></div>
-          <div class="acts"><button class="yes" onclick="act('${d.job_id}','applied')" title="Adds it to your applications tracker">I applied</button></div></div>`).join("")
+          <div class="acts"><button class="yes" onclick="fillApp('${d.job_id}')" title="Opens the company's form on your Mac and fills it in. You press Submit.">Fill application</button>
+            <button onclick="act('${d.job_id}','applied')" title="Adds it to your applications tracker">I applied</button></div></div>`).join("")
       : `<p class="empty">No drafts yet. Approve a job in the Scout and the Writer drafts a cover letter from your CV within a minute.</p>`;
     return { title:"Writer", role:"Drafts a cover letter and CV notes for every job you approve, using only facts from your CV.", color:"var(--writer)", tag:"WRT",
       status: statusLine("writer"), body: waiting + list };
@@ -546,6 +547,8 @@ async function dump(){ const box = $("#dump"), text = box.value.trim(); if (!tex
   $("#sort").disabled = true; $("#dumpNote").textContent = "Sorting…";
   await fetch("/api/notes", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ text }) });
   box.value = ""; setTimeout(() => { refresh(); }, 1500); }
+async function fillApp(id){ const r = await (await fetch(`/api/apply/${id}`, { method:"POST" })).json();
+  $("#ticker").innerHTML = r.again ? "<div>Filling the page that's open now…</div>" : "<div>Opening the application in a new browser window…</div>"; setTimeout(refresh, 1500); }
 async function dismiss(id){ await fetch(`/api/findings/${id}/dismiss`, { method:"POST" }); refresh(); }
 async function chat(){ const q = $("#q"), text = q.value.trim(); if (!text) return;
   $("#answer").textContent = "Thinking…"; q.value = "";
