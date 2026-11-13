@@ -63,9 +63,14 @@ def update_available():
     return True
 
 
+def head():
+    return subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+
 def schedule(serve_web=False, auto_update=False):
     print(f"Agent City running. Morning routine at {MORNING_HOUR}:00 (or as soon as the Mac wakes up after that).")
     last_check = last_school = 0
+    started_on = head()
     while True:
         now = datetime.now()
         if morning_due(now):
@@ -84,7 +89,8 @@ def schedule(serve_web=False, auto_update=False):
         if auto_update and time.time() - last_check > UPDATE_EVERY:
             last_check = time.time()
             try:
-                if update_available():
+                # new code from GitHub, or code someone updated by hand: restart onto it
+                if update_available() or head() != started_on:
                     sys.exit(0)   # the auto-start service restarts us on the new code
             except SystemExit:
                 raise
