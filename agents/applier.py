@@ -312,6 +312,12 @@ ANSWERS HE CHOSE:
 - Education: George Mason University, B.S. Computational and Data Sciences, minor in Finance, GPA 3.12, May 2027.
 - Short free-text answers: 2-4 sentences, plain and specific, using only facts from his CV.
 
+"WHY THIS COMPANY / WHY THIS ROLE" QUESTIONS: research first. Open a NEW tab (browser_tabs), read the job
+posting ({posting_url}) and the company's own About/mission or product pages (at most 3 pages, on the company's
+own site), then close that tab and go back to the form tab. Answer with 1-2 specific, true things about the
+company (what they build, who they serve, something from the posting) connected to 1-2 real things from his
+CV. Never copy sentences from their site; never invent facts about the company or about him.
+
 HARD RULES:
 1. NEVER click the final Submit/Apply/Send button. A guard on the page blocks it anyway. When you reach the
    final review/submit step, stop.
@@ -356,6 +362,14 @@ class Applier(Agent):
             return None
         if not self.allowed("ai", "think"):
             return None
+        from config import APPLIER_AI_PER_DAY
+        today = time.strftime("%Y-%m-%d")
+        used = int(db.get(f"applier_ai_{today}", "0"))
+        if used >= APPLIER_AI_PER_DAY:
+            self.log(f"Reached today's limit of {APPLIER_AI_PER_DAY} AI-filled applications (saves your Claude usage); "
+                     "did the quick fill only. Change APPLIER_AI_PER_DAY in .env if you want more.", "warn")
+            return None
+        db.put(f"applier_ai_{today}", used + 1)
         work = folder or (ROOT / "data" / "drafts" / "_apply")
         work.mkdir(parents=True, exist_ok=True)
         mcp = work / ".mcp-browser.json"
@@ -365,7 +379,7 @@ class Applier(Agent):
         public = {k: v for k, v in me.items() if not isinstance(v, list)}
         ask = salary_ask(job.get("salary", ""))
         prompt = AGENT_PROMPT.format(
-            url=url, me=json.dumps(public, indent=1), cv=cv or "(none)", letter_pdf=letter_pdf or "(none)",
+            url=url, posting_url=job.get("url", url), me=json.dumps(public, indent=1), cv=cv or "(none)", letter_pdf=letter_pdf or "(none)",
             letter=letter_text or "(none: leave cover letter boxes empty)",
             cv_text=CV_PATH.read_text()[:6000] if CV_PATH.exists() else "",
             salary=(f"{ask} (75% of the way up their posted range)" if ask else

@@ -159,3 +159,8 @@ PHONE_QUIET_HOURS = (22, 8)   # 10pm to 8am
 #   CANVAS_ICS_URL=https://canvas.gmu.edu/feeds/calendars/user_....ics
 # It's read-only, but treat it like a password: anyone with it can see your course calendar.
 CANVAS_ICS_URL = os.environ.get("CANVAS_ICS_URL", "")
+
+# ---- Applier ----
+# Each AI-filled application uses roughly one long chat's worth of your Claude usage. This caps it per day;
+# the free quick fill still runs after the cap.
+APPLIER_AI_PER_DAY = int(os.environ.get("APPLIER_AI_PER_DAY", "6"))
