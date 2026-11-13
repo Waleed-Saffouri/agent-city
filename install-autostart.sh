@@ -29,7 +29,15 @@ mkdir -p data "$HOME/Library/LaunchAgents"
 pkill -f "uvicorn server:app" 2>/dev/null || true      # stop a copy started with ./start.sh
 pkill -f "run.py schedule" 2>/dev/null || true
 
-# PATH includes Homebrew and the usual places, so the agents can find claude, gitleaks and git.
+# Use the same PATH your Terminal has, so the agents can find claude, node/npx, gitleaks and git
+# (launchd starts programs with a tiny PATH otherwise).
+SHELL_PATH="$("${SHELL:-/bin/zsh}" -lic 'printf %s "$PATH"' 2>/dev/null | tail -n 1)"
+[ -n "$SHELL_PATH" ] || SHELL_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+FULL_PATH="$SHELL_PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$HOME/.claude/local:/usr/bin:/bin:/usr/sbin:/sbin"
+for tool in claude npx gitleaks; do
+  if PATH="$FULL_PATH" command -v $tool >/dev/null 2>&1; then echo "  found $tool"; else echo "  missing $tool"; fi
+done
+PATH="$FULL_PATH" command -v npx >/dev/null 2>&1 || echo "Tip: 'brew install node' lets the Applier's AI fill forms."
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -40,7 +48,7 @@ cat > "$PLIST" <<EOF
   </array>
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>EnvironmentVariables</key><dict>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$HOME/.claude/local:$HOME/.npm-global/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>$FULL_PATH</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

@@ -456,6 +456,14 @@ class Applier(Agent):
                 page.wait_for_load_state("networkidle", timeout=10000)
             except Exception:
                 pass
+            for _ in range(20):               # single-page apps draw the form a few seconds after loading
+                page = context.pages[-1]
+                try:
+                    if len([f for f in label_texts(page) if f["type"] not in ("hidden", "search")]) >= 3:
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
             try:
                 filled, skipped = fill_form(page, me, cv, letter_pdf, letter_text, job.get("salary", ""))
                 self.log(f"Quick-filled {len(filled)} fields on the {job['company']} form.")
