@@ -259,3 +259,35 @@ def test_applier_fills_greenhouse_style_form(tmp_path):
         b.close()
     assert "CV" in filled and vals[:2] == ["Yes", "No"] and vals[2] == ""   # gender left for the person
     assert not any("submit" in x.lower() for x in filled)
+
+
+def test_applier_standing_answers(tmp_path):
+    import pytest
+    pw = pytest.importorskip("playwright.sync_api")
+    from agents.applier import fill_form, salary_ask
+    assert salary_ask("$90K–$110K") == "105000" and salary_ask("$30–$36/hr") == "34" and salary_ask("") == ""
+    me = {"gender": ["Male", "Man"], "hispanic": False, "race": ["Middle Eastern", "North African", "White"],
+          "veteran": ["I am not a protected veteran", "No"], "heard_about": ["Company website", "Job board", "Other"]}
+    with pw.sync_playwright() as p:
+        b = p.chromium.launch(); page = b.new_page()
+        page.goto((Path(__file__).parent / "fixtures" / "eeo_form.html").as_uri())
+        fill_form(page, me, None, None, "", "$90K–$110K")
+        got = page.evaluate("""() => ({sal: sal.value, hear: hear.selectedOptions[0].text, g: g.selectedOptions[0].text,
+             h: h.selectedOptions[0].text, r: r.selectedOptions[0].text, d: d.value, consent: consent.checked,
+             v: [...document.querySelectorAll('[name=v]')].find(x => x.checked)?.value})""")
+        b.close()
+    assert got == {"sal": "105000", "hear": "Company Website", "g": "Male", "h": "No", "r": "White",
+                   "d": "", "consent": False, "v": "2"}
+
+
+def test_applier_searchable_dropdown(tmp_path):
+    import pytest
+    pw = pytest.importorskip("playwright.sync_api")
+    from agents.applier import fill_form
+    with pw.sync_playwright() as p:
+        b = p.chromium.launch(); page = b.new_page()
+        page.goto((Path(__file__).parent / "fixtures" / "combo_form.html").as_uri())
+        fill_form(page, {"gender": ["Male", "Man"]}, None, None, "")
+        chosen = page.text_content("#chosen")
+        b.close()
+    assert chosen == "Male"

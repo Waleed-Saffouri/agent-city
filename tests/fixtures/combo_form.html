@@ -1,0 +1,11 @@
+<html><body>
+<div><label for="gq">Gender</label>
+<input id="gq" role="combobox" aria-autocomplete="list" autocomplete="off"><div id="menu"></div>
+<span id="chosen"></span></div>
+<script>
+const opts = ["Female", "Male", "Decline To Self Identify"];
+gq.addEventListener('input', () => { menu.innerHTML = '';
+  opts.filter(o => o.toLowerCase().includes(gq.value.toLowerCase())).forEach(o => {
+    const d = document.createElement('div'); d.setAttribute('role', 'option'); d.textContent = o;
+    d.onclick = () => { chosen.textContent = o; gq.value = ''; menu.innerHTML = ''; }; menu.appendChild(d); }); });
+</script></body></html>

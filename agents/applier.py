@@ -1,8 +1,10 @@
 """Applier: opens a job's application form on your Mac and fills it in for you.
 
 Click "Fill application" on a drafted job and a browser window opens on the company's form with your
-details, CV and cover letter already filled in. It NEVER presses Submit: you check every answer,
-fill anything it left blank (demographic questions, anything unusual), and submit yourself.
+details, CV, cover letter and your standing answers (work authorization, sponsorship, the voluntary
+demographic questions as you chose them, "how did you hear": company website, salary: 75% up the
+posted range) already filled in. It NEVER presses Submit or ticks consent boxes: you check every
+answer and submit yourself.
 
 Works best on Greenhouse, Lever and Ashby forms (most company boards). Workday and similar sites need
 you to sign in first; once you're on the form, press "Fill again" in Agent City.
@@ -42,13 +44,43 @@ TEXT_FIELDS = [
     (r"\bgpa\b|grade point", "gpa"),
     (r"graduation (date|year)|expected graduation|grad(uation)? year", "graduation"),
 ]
-# yes/no questions with a truthful standing answer
+# Questions with a standing answer. Each entry: label pattern -> me.json key whose value is a list of
+# option texts to try in order (the first one the form offers is picked).
 CHOICE_FIELDS = [
-    (r"authori[sz]ed to work|legally (authori[sz]ed|eligible)|eligible to work", "work_authorized"),
+    (r"authori[sz]ed to work|legally (authori[sz]ed|eligible)|eligible to work|right to work", "work_authorized"),
     (r"sponsor", "needs_sponsorship"),
     (r"18 years|over 18|at least 18", "over_18"),
+    (r"hispanic|latin[oa]", "hispanic"),
+    (r"\brace\b|ethnic", "race"),
+    (r"veteran", "veteran"),
+    (r"\bgender\b|\bsex\b", "gender"),
+    (r"how did you (hear|find|learn)|where did you (hear|find|see)|source of (application|referral)", "heard_about"),
 ]
-SKIP = r"gender|race|ethnic|veteran|disabilit|hispanic|pronoun|sexual|salary|compensation|how did you hear|referr"
+SKIP = r"pronoun|sexual orientation|transgender|disabilit|referred by|referral name|employee referral"
+SALARY = r"salary|compensation|pay expectation|desired pay|expected pay"
+
+
+def as_options(value):
+    """Turn a me.json answer into the list of option texts to look for."""
+    if value is True:
+        return ["Yes"]
+    if value is False:
+        return ["No"]
+    return value if isinstance(value, list) else [str(value)]
+
+
+def salary_ask(job_salary):
+    """Ask for the upper part of the posted range, without overreaching: 75% of the way from the low end
+    to the high end, rounded. Returns '' when the posting gives no range (better blank than a guess)."""
+    m = re.match(r"\$([\d.]+)(K?)–\$([\d.]+)(K?)(/hr)?", job_salary or "")
+    if not m:
+        return ""
+    lo, hi = float(m[1]), float(m[3])
+    if m[5]:   # hourly
+        return f"{round(lo + 0.75 * (hi - lo))}"
+    lo, hi = lo * 1000, hi * 1000
+    return f"{int(round((lo + 0.75 * (hi - lo)) / 1000) * 1000)}"
+
 
 BANNER_JS = """
 (() => { const b = document.createElement('div');
@@ -81,33 +113,75 @@ def label_texts(page):
         if (!text) text = el.getAttribute('aria-label') || '';
         if (!text) { const box = el.closest('div, fieldset, li'); if (box) text = (box.querySelector('label, legend') || {}).innerText || ''; }
         if (!text) text = el.placeholder || el.name || '';
+        // for radio buttons, the question is on the group, the answer is on the button
+        let group = '';
+        if (el.type === 'radio' || el.type === 'checkbox') {
+          const fs = el.closest('fieldset'); const rg = el.closest('[role=radiogroup], [role=group]');
+          group = (fs && (fs.querySelector('legend') || {}).innerText) || (rg && (rg.getAttribute('aria-label') ||
+                  (document.getElementById(rg.getAttribute('aria-labelledby') || '') || {}).innerText)) || '';
+          if (!group) { let p = el.parentElement; for (let k = 0; k < 4 && p; k++, p = p.parentElement) {
+            const q = p.querySelector('label:not(:has(input)), legend, p, span.question'); if (q && !q.contains(el)) { group = q.innerText; break; } } }
+        }
+        const combo = el.getAttribute('role') === 'combobox' || el.getAttribute('aria-autocomplete') === 'list' ||
+                      /select__input|react-select/.test(el.className + ' ' + (el.id || ''));
         el.setAttribute('data-ac-idx', i);
         out.push({idx: i, tag: el.tagName.toLowerCase(), type: el.type || '', text: text.trim().slice(0, 200),
+                  group: (group || '').trim().slice(0, 200), combo, checked: !!el.checked,
                   value: el.value || '', accept: el.accept || ''});
       });
       return out;
     }""")
 
 
-def choose(page, sel, wanted):
-    """Pick the dropdown option whose text starts with `wanted` (e.g. "Yes"). True if found."""
-    return page.evaluate("""([sel, wanted]) => {
-      const el = document.querySelector(sel); if (!el) return false;
-      const opt = [...el.options].find(o => o.text.trim().toLowerCase().startsWith(wanted.toLowerCase()));
-      if (!opt) return false;
-      el.value = opt.value; el.dispatchEvent(new Event('change', {bubbles: true})); return true;
-    }""", [sel, wanted])
+def matches(option_text, wanted):
+    """Short answers (Yes/No/Male) must start the option; longer ones may appear anywhere in it."""
+    o, w = option_text.strip().lower(), wanted.strip().lower()
+    return o.startswith(w) if len(w) <= 4 else w in o
 
 
-def fill_form(page, me, cv_path, letter_path, letter_text):
+def choose(page, sel, wanted_list):
+    """Native dropdown: pick the first wanted answer the form offers. Returns the option text or None."""
+    options = page.evaluate("(sel) => [...document.querySelector(sel).options].map(o => o.text)", sel)
+    for w in wanted_list:
+        for i, text in enumerate(options):
+            if text.strip() and matches(text, w):
+                page.evaluate("""([sel, i]) => { const el = document.querySelector(sel); el.selectedIndex = i;
+                    el.dispatchEvent(new Event('change', {bubbles: true})); }""", [sel, i])
+                return text.strip()
+    return None
+
+
+def choose_combo(page, sel, wanted_list):
+    """Searchable dropdown (React Select on Greenhouse, etc.): open it, type, take the matching option."""
+    for w in wanted_list:
+        try:
+            page.click(sel, timeout=2000)
+            page.fill(sel, w)
+            page.wait_for_timeout(500)
+            opts = page.locator("[role=option], .select__option, [id*='-option-']")
+            for k in range(min(opts.count(), 30)):
+                t = opts.nth(k).inner_text()
+                if matches(t, w):
+                    opts.nth(k).click()
+                    return t.strip()
+            page.keyboard.press("Escape")
+        except Exception:
+            continue
+    return None
+
+
+def fill_form(page, me, cv_path, letter_path, letter_text, job_salary=""):
     """Fill what we can. Returns (filled labels, skipped labels)."""
     filled, skipped = [], []
+    radio_done = set()
     for f in label_texts(page):
         label = re.sub(r"\s+", " ", f["text"]).lower().replace("*", "").strip()
+        question = re.sub(r"\s+", " ", f["group"] or f["text"]).lower().replace("*", "").strip()
         sel = f'[data-ac-idx="{f["idx"]}"]'
-        if not label or re.search(SKIP, label):
-            if label:
-                skipped.append(f["text"])
+        short = (f["group"] or f["text"]).split("\n")[0][:60]
+        if not question or re.search(SKIP, question):
+            if question:
+                skipped.append(short)
             continue
         try:
             if f["type"] == "file":
@@ -119,28 +193,48 @@ def fill_form(page, me, cv_path, letter_path, letter_text):
             if f["tag"] == "textarea" and re.search(r"cover letter", label) and letter_text:
                 page.fill(sel, letter_text); filled.append("Cover letter (text)")
                 continue
-            if f["value"]:
-                continue   # never overwrite something already there
+            if f["type"] == "radio":   # pick the button whose own label is the answer
+                for pat, key in CHOICE_FIELDS:
+                    if re.search(pat, question) and key in me and question not in radio_done:
+                        if any(matches(f["text"], w) for w in as_options(me[key])):
+                            page.check(sel); radio_done.add(question); filled.append(f"{short} → {f['text'][:30]}")
+                        break
+                continue
+            if f["type"] == "checkbox" or (f["value"] and f["tag"] != "select" and not f["combo"]):
+                continue   # never overwrite what's there; checkboxes (consents) are yours
+            if re.search(SALARY, question):
+                ask = salary_ask(job_salary)
+                if ask and f["tag"] != "select" and not f["combo"]:
+                    page.fill(sel, ask); filled.append(f"{short} → {ask}")
+                else:
+                    skipped.append(short + " (no posted range to base it on)")
+                continue
             for pat, key in CHOICE_FIELDS:
-                if re.search(pat, label) and key in me:
-                    answer = "Yes" if me[key] else "No"
-                    if f["tag"] == "select" and choose(page, sel, answer):
-                        filled.append(f"{f['text'][:50]} → {answer}")
-                    else:
-                        skipped.append(f["text"])
+                if re.search(pat, question) and key in me:
+                    opts = as_options(me[key])
+                    if f["tag"] == "select":
+                        got = choose(page, sel, opts)
+                    elif f["combo"]:
+                        got = choose_combo(page, sel, opts)
+                    else:   # free-text version of the question
+                        page.fill(sel, opts[0]); got = opts[0]
+                    (filled.append(f"{short} → {got}") if got else skipped.append(short))
                     break
             else:
                 for pat, key in TEXT_FIELDS:
                     if re.search(pat, label) and me.get(key):
                         if f["tag"] == "select":
-                            if not choose(page, sel, str(me[key])):
-                                skipped.append(f["text"]); break
+                            if not choose(page, sel, [str(me[key])]):
+                                skipped.append(short); break
+                        elif f["combo"]:
+                            if not choose_combo(page, sel, [str(me[key])]):
+                                skipped.append(short); break
                         elif f["type"] in ("text", "email", "tel", "url", "search", "") or f["tag"] == "textarea":
                             page.fill(sel, str(me[key]))
-                        filled.append(f["text"].split("\n")[0][:60])
+                        filled.append(short)
                         break
         except Exception:
-            skipped.append(f["text"])
+            skipped.append(short)
     return filled, skipped
 
 
@@ -202,7 +296,7 @@ class Applier(Agent):
                         btn.first.click(timeout=3000); time.sleep(2); break
                     except Exception:
                         pass
-            filled, skipped = fill_form(page, me, cv, letter_pdf, letter_text)
+            filled, skipped = fill_form(page, me, cv, letter_pdf, letter_text, job.get("salary", ""))
             page.evaluate(BANNER_JS)
             self.log(f"Filled {len(filled)} fields on the {job['company']} form"
                      + (f"; left {len(skipped)} for you" if skipped else "") + ". Check it and press Submit yourself.")
@@ -216,7 +310,7 @@ class Applier(Agent):
                     db.put("applier_again", "0")
                     try:
                         current = browser.contexts[0].pages[-1]
-                        more, _ = fill_form(current, me, cv, letter_pdf, letter_text)
+                        more, _ = fill_form(current, me, cv, letter_pdf, letter_text, job.get("salary", ""))
                         current.evaluate(BANNER_JS)
                         self.log(f"Filled {len(more)} more fields.")
                     except Exception as e:

@@ -26,7 +26,7 @@ from config import ROOT
 AGENTS = {"scout": JobScout, "sentinel": Sentinel, "writer": Writer, "school": School, "planner": Planner, "manager": Manager}
 ORDER = ("scout", "sentinel", "writer", "school", "planner", "manager")   # manager last: the brief sees everything
 MORNING_HOUR = 7
-UPDATE_EVERY = 30 * 60
+UPDATE_EVERY = 5 * 60   # check GitHub for a new version every 5 minutes
 SCHOOL_EVERY = 2 * 60 * 60   # Canvas is checked every 2 hours (8am-10pm); it's free, no AI
 
 
