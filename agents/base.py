@@ -89,6 +89,17 @@ class Agent:
             self.log(f"Phone alert failed: {type(e).__name__}", "warn")  # never log the token
             return False
 
+    def post_json(self, url, payload, timeout=30):
+        """POST JSON with the same permission checks as fetch() (Workday job search needs POST)."""
+        parts = urllib.parse.urlparse(url)
+        if parts.scheme != "https" or not self.allowed("network", parts.hostname or ""):
+            raise PermissionDenied(f"{self.name} may not contact {parts.hostname}")
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST",
+                                     headers={"Content-Type": "application/json", "Accept": "application/json",
+                                              "User-Agent": "Mozilla/5.0 (agent-city)"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310 - scheme and host checked above
+            return json.loads(r.read(5_000_000))
+
     def inbox(self, since=0):
         return db.rows("SELECT * FROM messages WHERE recipient IN (?, 'all') AND ts > ? ORDER BY ts",
                        (self.name, since))

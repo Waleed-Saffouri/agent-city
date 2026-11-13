@@ -16,7 +16,7 @@ from datetime import datetime
 import db
 from agents import guard
 from agents.base import Agent
-from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, INTERNSHIP_TERMS, JOB_SOURCES, SPRING_BONUS,
+from config import (AVOID_COMPANIES, GOOD_CATEGORIES, GREENHOUSE_COMPANIES, WORKDAY_BOARDS, INTERNSHIP_TERMS, JOB_SOURCES, SPRING_BONUS,
                     LOCATION_TIERS, OTHER_LOCATION_POINTS, DMV_PLACES, MY_GPA, MAX_YEARS_REQUIRED,
                     MAX_AGE_DAYS, OFF_TOPIC, SKIP_TITLE, TITLE_KEYWORDS)
 
@@ -186,6 +186,37 @@ def commutable(locs):
 
 def fit_label(score):
     return "Great fit" if score >= 80 else "Good fit" if score >= 65 else "Worth a look"
+
+
+def workday_posted(text):
+    """'Posted Today' / 'Posted Yesterday' / 'Posted 3 Days Ago' / 'Posted 30+ Days Ago' -> timestamp."""
+    t = (text or "").lower()
+    if "today" in t:
+        days = 0
+    elif "yesterday" in t:
+        days = 1
+    else:
+        m = re.search(r"(\d+)\+?\s*day", t)
+        days = int(m[1]) if m else 45
+    return time.time() - days * 86400
+
+
+def from_workday(tenant, dc, site, company, postings):
+    """Workday search results -> the same shape as SimplifyJobs listings."""
+    out = []
+    for p in postings:
+        path = p.get("externalPath", "")
+        city = re.match(r"/job/([^/]+)/", path)
+        where = city[1].replace("-", " ") if city else ""
+        where = re.sub(r"\s([A-Z]{2})$", r", \1", where)          # "McLean VA" -> "McLean, VA"
+        locs = [where] if where else []
+        if p.get("locationsText") and "location" not in p["locationsText"].lower():
+            locs = [p["locationsText"]]
+        out.append({"id": f"wd-{tenant}-{path.rsplit('_', 1)[-1]}", "company_name": company, "title": p.get("title", ""),
+                    "locations": locs, "url": f"https://{tenant}.{dc}.myworkdayjobs.com/{site}{path}",
+                    "date_posted": workday_posted(p.get("postedOn")), "active": True, "is_visible": True,
+                    "category": "", "degrees": []})
+    return out
 
 
 def words(title):
@@ -400,10 +431,21 @@ class JobScout(Agent):
                 feeds.append(("company_boards", jobs))
             except Exception:
                 failed.append(slug)
-        ok = len(GREENHOUSE_COMPANIES) - len(failed)
+        for tenant, dc, site, company in WORKDAY_BOARDS:
+            try:
+                api = f"https://{tenant}.{dc}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+                jobs = {}
+                for term in ("data analyst", "analytics", "intern", "data scientist"):
+                    res = self.post_json(api, {"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": term})
+                    for j in from_workday(tenant, dc, site, company, res.get("jobPostings", [])):
+                        jobs[j["id"]] = j
+                feeds.append(("company_boards", list(jobs.values())))
+            except Exception:
+                failed.append(tenant)
+        ok = len(GREENHOUSE_COMPANIES) + len(WORKDAY_BOARDS) - len(failed)
         if not feeds:  # nothing at all came in: that's a failure, not "no jobs today"
             raise RuntimeError("couldn't read any job source (internet down or sources moved)")
-        self.log(f"Read {len(feeds) - ok} job lists and {ok}/{len(GREENHOUSE_COMPANIES)} company boards."
+        self.log(f"Read {len(JOB_SOURCES)} job lists and {ok}/{len(GREENHOUSE_COMPANIES) + len(WORKDAY_BOARDS)} company boards."
                  + (f" Couldn't reach: {', '.join(failed[:5])}{'…' if len(failed) > 5 else ''}." if failed else ""),
                  "warn" if failed else "info")
         self.expire_closed(feeds, failed)

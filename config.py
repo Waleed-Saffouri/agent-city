@@ -52,6 +52,14 @@ GREENHOUSE_COMPANIES = [
     "akunacapital", "pdtpartners", "virtu", "clearstreet", "stripe", "brex", "affirm", "coinbase",
     "carta", "chime", "sofi", "robinhood", "betterment", "mercury", "vestwell", "figma", "datadog",
     "mongodb", "airbnb", "asana",
+    # DMV employers on Greenhouse
+    "appian", "alarmcom", "axios", "verisign", "eab", "civisanalytics",
+]
+
+# Company job sites on Workday: (tenant, data center, site, company name). Find them in a company's job links:
+# https://TENANT.DC.myworkdayjobs.com/SITE/...
+WORKDAY_BOARDS = [
+    ("capitalone", "wd12", "Capital_One", "Capital One"),     # McLean HQ: big intern and analyst programs
 ]
 MAX_AGE_DAYS = 21
 
@@ -125,7 +133,7 @@ SENTINEL_TARGETS = [p for p in os.environ.get("SENTINEL_TARGETS", str(Path.home(
 # both of which check this list and log anything blocked. Sentinel reports blocked attempts.
 PERMISSIONS = {
     "manager":  {"network": ["api.telegram.org"], "ai": ["think"]},
-    "scout":    {"network": ["raw.githubusercontent.com", "boards-api.greenhouse.io",
+    "scout":    {"network": ["raw.githubusercontent.com", "boards-api.greenhouse.io", "*.myworkdayjobs.com",
                              # job posting pages, read only to find the salary:
                              "boards.greenhouse.io", "job-boards.greenhouse.io", "*.lever.co",
                              "jobs.ashbyhq.com", "apply.workable.com", "ats.rippling.com", "*.myworkdayjobs.com", "jobs.smartrecruiters.com",

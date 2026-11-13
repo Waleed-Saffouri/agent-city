@@ -308,3 +308,13 @@ def test_applier_shadow_dom_form(tmp_path):
                      resume: r.getElementById('up1').files.length, autofill: a.getElementById('up0').files.length}; }""")
         b.close()
     assert got == {"fn": "Ada", "em2": "a@b.c", "msg": "Hello team", "resume": 1, "autofill": 0}
+
+
+def test_workday_listing_shape():
+    from agents.job_scout import from_workday, location_points, commutable
+    jobs = from_workday("capitalone", "wd12", "Capital_One", "Capital One", [
+        {"title": "Data Analyst Intern", "externalPath": "/job/McLean-VA/Data-Analyst-Intern_R123", "postedOn": "Posted 3 Days Ago",
+         "locationsText": "McLean, VA"},
+        {"title": "Data Engineer", "externalPath": "/job/Richmond-VA/Data-Engineer_R9", "postedOn": "Posted Today", "locationsText": "2 Locations"}])
+    assert jobs[0]["locations"] == ["McLean, VA"] and commutable(jobs[0]["locations"])
+    assert jobs[1]["locations"] == ["Richmond, VA"] and jobs[0]["url"].endswith("/Capital_One/job/McLean-VA/Data-Analyst-Intern_R123")
