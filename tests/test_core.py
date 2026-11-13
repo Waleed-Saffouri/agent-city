@@ -205,6 +205,10 @@ def test_canvas_feed_parsing():
     ev = parse_ics(ics)
     assert ev[0]["title"] == "Homework 6" and ev[0]["course"] == "CDS 421" and ev[0]["time"]
     assert ev[1]["title"] == "Final Exam" and ev[1]["course"] == "MATH 203" and ev[1]["time"] is None
+    gmu = ("BEGIN:VEVENT\nUID:event-assignment-1\nDTSTART:20261117T045900Z\nSUMMARY:Section 4.5 [Fall 2026 Linear Algebra (MATH-203-006)]\nEND:VEVENT\n"
+           "BEGIN:VEVENT\nUID:event-assignment-override-9\nDTSTART:20261117T045900Z\nSUMMARY:Section 4.5 [Fall 2026 Linear Algebra (MATH-203-006)]\nEND:VEVENT\n")
+    ev = parse_ics(gmu)
+    assert len(ev) == 1 and ev[0]["course"] == "MATH 203" and "override" in ev[0]["uid"]
 
 
 def test_syllabus_matching():

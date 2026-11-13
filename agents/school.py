@@ -52,12 +52,17 @@ def parse_ics(text):
         except ValueError:
             continue
         summary = fields["SUMMARY"][1].replace("\\,", ",").replace("\\;", ";")
-        m = re.search(r"\[([^\]]+)\]\s*$", summary)
-        course = re.sub(r"\s*\(.*?\)|-\d{3}.*$", "", m[1]).strip() if m else ""
+        m = re.search(r"\[(.+)\]\s*$", summary)          # "Homework 6 [Fall 2026 Linear Algebra (MATH-203-006)]"
+        bracket = m[1] if m else ""
+        code = re.search(r"\b([A-Z]{2,4})[- ]?(\d{3})\b", bracket or summary)
+        course = f"{code[1]} {code[2]}" if code else bracket.strip()
         title = summary[:m.start()].strip() if m else summary
         events.append({"uid": fields.get("UID", ("", summary + raw))[1], "title": title, "course": course,
                        "due": due, "time": tm, "url": fields.get("URL", ("", ""))[1]})
-    return events
+    # Canvas lists an assignment twice when your section has its own date ("override"). The
+    # override is the date that applies to you, so drop the general copy.
+    overridden = {(e["course"], e["title"]) for e in events if "override" in e["uid"]}
+    return [e for e in events if "override" in e["uid"] or (e["course"], e["title"]) not in overridden]
 
 
 def load_syllabus():
