@@ -1,6 +1,6 @@
 # Agent City
 
-A pixel-art city where each building is an AI agent working for me. Every morning one agent finds jobs that fit me, another checks my code for security problems, and a manager agent reads both reports and writes me a short brief.
+A pixel-art city where each building is an AI agent that runs part of my day: planning and coursework from Canvas, job-market data, writing, and code security. Every morning the agents do their work, report to a manager agent through a shared message board, and the manager sends me one short brief.
 
 ![Agent City](docs/city.png)
 
@@ -9,7 +9,7 @@ Click a building to open that agent:
 ![Sentinel panel](docs/sentinel-panel.png)
 
 ## Why I built it
-I was applying to jobs by hand and wanted a system that does the searching and checking for me while I make the final decisions. I also wanted to see how multi-agent systems work in practice: how agents talk to each other, how to keep their costs down, and how to keep them from doing things they shouldn't.
+I wanted to learn how multi-agent AI systems work in practice (how agents coordinate, how to keep model costs down, and how to stop them doing things they shouldn't) by building one I'd actually use every day. It keeps my coursework, deadlines and research organized, and every decision stays with me.
 
 ## The agents
 | Building | Agent | What it does | Uses AI? |

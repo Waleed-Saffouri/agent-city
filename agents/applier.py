@@ -53,10 +53,11 @@ CHOICE_FIELDS = [
     (r"hispanic|latin[oa]", "hispanic"),
     (r"\brace\b|ethnic", "race"),
     (r"veteran", "veteran"),
+    (r"disabilit", "disability"),
     (r"\bgender\b|\bsex\b", "gender"),
     (r"how did you (hear|find|learn)|where did you (hear|find|see)|source of (application|referral)", "heard_about"),
 ]
-SKIP = r"pronoun|sexual orientation|transgender|disabilit|referred by|referral name|employee referral"
+SKIP = r"pronoun|sexual orientation|transgender|referred by|referral name|employee referral"
 SALARY = r"salary|compensation|pay expectation|desired pay|expected pay"
 
 
