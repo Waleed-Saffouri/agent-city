@@ -135,7 +135,7 @@ PERMISSIONS = {
     "writer":   {"network": ["boards-api.greenhouse.io"], "ai": ["think"]},
     "planner":  {"network": ["api.telegram.org"], "ai": ["think"]},
     "school":   {"network": ["canvas.gmu.edu", "*.instructure.com"], "ai": []},
-    "applier":  {"network": [], "ai": []},   # drives a visible browser you watch; never submits   # read-only calendar feed
+    "applier":  {"network": [], "ai": ["think"]},   # drives a visible browser you watch; a guard blocks Submit
 }
 
 # ---- Writer ----
