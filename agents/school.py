@@ -98,9 +98,11 @@ class School(Agent):
 
     def upsert(self, uid, title, due, time_, priority):
         """Add a to-do, or move it if Canvas changed the date. Never re-adds one you finished."""
-        row = db.rows("SELECT id, due, due_time, status FROM tasks WHERE source_uid=?", (uid,))
+        row = db.rows("SELECT id, due, due_time, status, title FROM tasks WHERE source_uid=?", (uid,))
         if row:
             r = row[0]
+            if r["status"] == "open" and r["title"] != title and r["due"] == due:
+                db.execute("UPDATE tasks SET title=? WHERE id=?", (title, r["id"]))   # cleaner name, same date
             if r["status"] == "open" and (r["due"] != due or r["due_time"] != time_):
                 db.execute("UPDATE tasks SET due=?, due_time=?, title=? WHERE id=?", (due, time_, title, r["id"]))
                 return "moved"
