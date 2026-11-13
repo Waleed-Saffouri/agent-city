@@ -142,18 +142,23 @@ class School(Agent):
                    and abs((e["due"] - it["due"]).days) <= 3 and same_item(it["title"], e["title"]) for e in events):
                 continue
             label = f"{it['title']} ({it['course']}, from syllabus)"
-            kind = it.get("kind", "")
-            prio = "high" if kind in ("exam", "project", "paper") or EXAM.search(it["title"]) else "normal"
+            kind = it.get("kind", "") or ("exam" if EXAM.search(it["title"]) else "")
+            prio = "high" if kind in ("exam", "project", "paper") else "normal"
             uid = f"syl:{it['course']}:{it['title']}:{it['due']}"
             res = self.upsert(uid, f"Due: {label}", it["due"].isoformat(), None, prio)
             syl_added += res == "added"
-            lead = 7 if kind == "exam" or EXAM.search(it["title"]) else 10 if kind in ("project", "paper") else 0
+            lead = 7 if kind == "exam" else 10 if kind in ("project", "paper") else 0
             if lead:
                 start = max(today, it["due"] - timedelta(days=lead))
                 verb = "Start studying" if lead == 7 else "Start working on"
                 res = self.upsert(uid + "#start", f"{verb}: {label}", start.isoformat(), None, "high")
                 syl_added += res == "added"
         added += syl_added
+        if events:   # only when the feed was actually read
+            live = {e["uid"] for e in events} | {e["uid"] + "#study" for e in events}
+            for r in db.rows("SELECT id, source_uid FROM tasks WHERE status='open' AND source_uid LIKE 'event-%'"):
+                if r["source_uid"] not in live:
+                    db.execute("UPDATE tasks SET status='deleted' WHERE id=?", (r["id"],))
         week = sum(1 for e in events if today <= e["due"] <= today + timedelta(days=7))
         self.log(f"Read {len(events)} Canvas items: {week} due this week. Added {added} to-dos, moved {moved}.")
         self.send("planner", f"Canvas: {week} items due this week ({added} new, {moved} moved).")
